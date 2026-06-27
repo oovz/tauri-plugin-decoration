@@ -109,8 +109,15 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
     }
 
     // Do the initial positioning
+    let ns_window = match window.ns_window() {
+        Ok(win) => win,
+        Err(e) => {
+            eprintln!("decorum: failed to get ns_window for initial positioning: {:?}", e);
+            return;
+        }
+    };
     position_traffic_lights(
-        UnsafeWindowHandle(window.ns_window().expect("Failed to create window handle")),
+        UnsafeWindowHandle(ns_window),
         WINDOW_CONTROL_PAD_X,
         WINDOW_CONTROL_PAD_Y,
     );
@@ -128,10 +135,13 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
     }
 
     unsafe {
-        let ns_win = window
-            .ns_window()
-            .expect("NS Window should exist to mount traffic light delegate.")
-            as id;
+        let ns_win = match window.ns_window() {
+            Ok(win) => win as id,
+            Err(e) => {
+                eprintln!("decorum: failed to get ns_window to mount delegate: {:?}", e);
+                return;
+            }
+        };
 
         let current_delegate: id = ns_win.delegate();
 
@@ -150,15 +160,21 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         extern "C" fn on_window_did_resize<R: Runtime>(this: &Object, _cmd: Sel, notification: id) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
-                    let id = state
-                        .window
-                        .ns_window()
-                        .expect("NS window should exist on state to handle resize")
-                        as id;
+                    // Guard against ns_window() failure — panicking inside an
+                    // Objective-C delegate callback aborts the process or is
+                    // silently swallowed, which stops controls from rendering
+                    // (see GitHub issue #53).
+                    let ns_win = match state.window.ns_window() {
+                        Ok(win) => win as id,
+                        Err(e) => {
+                            eprintln!("decorum: failed to get ns_window on resize: {:?}", e);
+                            return;
+                        }
+                    };
 
                     #[cfg(target_os = "macos")]
                     position_traffic_lights(
-                        UnsafeWindowHandle(id as *mut std::ffi::c_void),
+                        UnsafeWindowHandle(ns_win as *mut std::ffi::c_void),
                         state.traffic_light_x,
                         state.traffic_light_y,
                     );
@@ -248,10 +264,9 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         ) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
-                    state
-                        .window
-                        .emit("did-enter-fullscreen", ())
-                        .expect("Failed to emit event");
+                    if let Err(e) = state.window.emit("did-enter-fullscreen", ()) {
+                        eprintln!("decorum: failed to emit did-enter-fullscreen: {:?}", e);
+                    }
                 });
 
                 let super_del: id = *this.get_ivar("super_delegate");
@@ -265,10 +280,9 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         ) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
-                    state
-                        .window
-                        .emit("will-enter-fullscreen", ())
-                        .expect("Failed to emit event");
+                    if let Err(e) = state.window.emit("will-enter-fullscreen", ()) {
+                        eprintln!("decorum: failed to emit will-enter-fullscreen: {:?}", e);
+                    }
                 });
 
                 let super_del: id = *this.get_ivar("super_delegate");
@@ -282,14 +296,19 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         ) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
-                    state
-                        .window
-                        .emit("did-exit-fullscreen", ())
-                        .expect("Failed to emit event");
+                    if let Err(e) = state.window.emit("did-exit-fullscreen", ()) {
+                        eprintln!("decorum: failed to emit did-exit-fullscreen: {:?}", e);
+                    }
 
-                    let id = state.window.ns_window().expect("Failed to emit event") as id;
+                    let ns_win = match state.window.ns_window() {
+                        Ok(win) => win as id,
+                        Err(e) => {
+                            eprintln!("decorum: failed to get ns_window on exit fullscreen: {:?}", e);
+                            return;
+                        }
+                    };
                     position_traffic_lights(
-                        UnsafeWindowHandle(id as *mut std::ffi::c_void),
+                        UnsafeWindowHandle(ns_win as *mut std::ffi::c_void),
                         state.traffic_light_x,
                         state.traffic_light_y,
                     );
@@ -306,10 +325,9 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         ) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
-                    state
-                        .window
-                        .emit("will-exit-fullscreen", ())
-                        .expect("Failed to emit event");
+                    if let Err(e) = state.window.emit("will-exit-fullscreen", ()) {
+                        eprintln!("decorum: failed to emit will-exit-fullscreen: {:?}", e);
+                    }
                 });
 
                 let super_del: id = *this.get_ivar("super_delegate");
@@ -403,18 +421,25 @@ pub fn update_traffic_light_positions(window: &tauri::WebviewWindow, x: f64, y: 
     use objc::runtime::Object;
     use std::ffi::c_void;
     use tauri::Wry;
-    
+
+    // SAFETY: The `WebviewWindowExt` trait (which is the only caller of this
+    // function via `set_traffic_lights_inset`) is implemented exclusively for
+    // `WebviewWindow`, which is a type alias for `WebviewWindow<Wry>`.
+    // Therefore the delegate's `WindowState<R>` was always created with
+    // `R = Wry` in practice, making this cast sound.  If the plugin is ever
+    // generalised to custom runtimes, the positions must be stored in a
+    // runtime-erased way instead.
     unsafe {
         let ns_win = match window.ns_window() {
             Ok(win) => win as cocoa::base::id,
             Err(_) => return,
         };
-        
+
         let delegate: *mut Object = msg_send![ns_win, delegate];
         if delegate.is_null() {
             return;
         }
-        
+
         // Try to access the ivar directly with proper type annotation
         let app_box: *mut c_void = match std::panic::catch_unwind(|| {
             *(*delegate).get_ivar::<*mut c_void>("app_box")
@@ -422,8 +447,7 @@ pub fn update_traffic_light_positions(window: &tauri::WebviewWindow, x: f64, y: 
             Ok(ptr) if !ptr.is_null() => ptr,
             _ => return, // Either the ivar doesn't exist or it's null
         };
-        
-        // Specify Wry as the concrete runtime type
+
         let state: &mut WindowState<Wry> = &mut *(app_box as *mut WindowState<Wry>);
         state.traffic_light_x = x;
         state.traffic_light_y = y;

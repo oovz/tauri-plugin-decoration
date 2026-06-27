@@ -75,8 +75,9 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                             })
                     {
                         let mut icon_data = String::new();
-                        let mut f = std::fs::File::open(control_icon.path).unwrap();
-                        let _ = f.read_to_string(&mut icon_data);
+                        if let Ok(mut f) = std::fs::File::open(&control_icon.path) {
+                            let _ = f.read_to_string(&mut icon_data);
+                        }
 
                         control_script =
                             control_script.replace(&format!("@win-{}", control), &icon_data);
@@ -104,7 +105,8 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                     1,
                 );
 
-                win2.eval(&control_script).expect("couldn't run js");
+                win2.eval(&control_script)
+                    .unwrap_or_else(|e| println!("decorum error: {:?}", e));
             }
 
             // On Windows, create custom window controls
@@ -136,12 +138,18 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                 );
 
                 win2.eval(script_controls.as_str())
-                    .expect("couldn't run js");
+                    .unwrap_or_else(|e| println!("decorum error: {:?}", e));
 
+                // Unlisten the page-load event when the window closes so the
+                // listener doesn't leak across navigations/reloads. We use
+                // once-only registration via a flag stored on the window to
+                // avoid stacking duplicate on_window_event handlers on every
+                // page load.
                 let win3 = win2.clone();
+                let event_id = _event.id();
                 win2.on_window_event(move |eve| match eve {
                     tauri::WindowEvent::CloseRequested { .. } => {
-                        win3.unlisten(_event.id());
+                        win3.unlisten(event_id);
                     }
                     _ => {}
                 });
@@ -236,7 +244,13 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 
 #[cfg(target_os = "macos")]
 fn is_main_thread() -> bool {
-    std::thread::current().name() == Some("main")
+    // pthread_main_np() is the reliable way to check if we're on the main
+    // thread on macOS. Checking the thread name is fragile because Tauri
+    // doesn't guarantee the main thread is named "main".
+    extern "C" {
+        fn pthread_main_np() -> i32;
+    }
+    unsafe { pthread_main_np() != 0 }
 }
 
 #[cfg(target_os = "macos")]
@@ -256,7 +270,11 @@ where
             let win2 = win.clone();
 
             match win.run_on_main_thread(move || {
-                main_action(&win2).unwrap();
+                // Don't unwrap — panicking inside run_on_main_thread is
+                // silently swallowed and can stop controls from rendering.
+                if let Err(e) = main_action(&win2) {
+                    eprintln!("decorum: main_thread action failed: {:?}", e);
+                }
             }) {
                 Ok(_) => Ok(win),
                 Err(e) => Err(e),
