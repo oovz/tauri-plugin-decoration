@@ -7,7 +7,8 @@ mod traffic;
 #[cfg(target_os = "linux")]
 mod dconf;
 
-mod commands;
+#[cfg(target_os = "windows")]
+mod snap;
 
 #[cfg(target_os = "macos")]
 #[macro_use]
@@ -109,17 +110,23 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                     .unwrap_or_else(|e| println!("decorum error: {:?}", e));
             }
 
-            // On Windows, create custom window controls
+            // On Windows, create custom window controls and install
+            // the native Snap Layout overlay.
             #[cfg(target_os = "windows")]
             {
                 let mut controls = Vec::new();
+                let mut right_index: u32 = 0;
+                let mut has_maximize = false;
 
                 if win2.is_minimizable().unwrap_or(false) {
                     controls.push("minimize");
+                    right_index += 1;
                 }
 
                 if win2.is_maximizable().unwrap_or(false) && win2.is_resizable().unwrap_or(false) {
                     controls.push("maximize");
+                    has_maximize = true;
+                    right_index += 1;
                 }
 
                 if win2.is_closable().unwrap_or(false) {
@@ -140,6 +147,22 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                 win2.eval(script_controls.as_str())
                     .unwrap_or_else(|e| println!("decorum error: {:?}", e));
 
+                // Install the native Win32 child HWND overlay for Snap Layout.
+                // The overlay returns HTMAXBUTTON from WM_NCHITTEST, which is
+                // the Windows-supported path for showing the Snap Layout
+                // flyout on Windows 11 — no keyboard or mouse simulation.
+                if has_maximize {
+                    let snap_win = win2.clone();
+                    if let Err(e) = snap::install(
+                        &snap_win,
+                        32,
+                        58,
+                        right_index.saturating_sub(1),
+                    ) {
+                        eprintln!("decorum: failed to install snap overlay: {:?}", e);
+                    }
+                }
+
                 // Unlisten the page-load event when the window closes so the
                 // listener doesn't leak across navigations/reloads. We use
                 // once-only registration via a flag stored on the window to
@@ -150,6 +173,8 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                 win2.on_window_event(move |eve| match eve {
                     tauri::WindowEvent::CloseRequested { .. } => {
                         win3.unlisten(event_id);
+                        #[cfg(target_os = "windows")]
+                        let _ = snap::uninstall(&win3);
                     }
                     _ => {}
                 });
@@ -227,7 +252,6 @@ impl<'a> WebviewWindowExt for WebviewWindow {
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("decorum")
-        .invoke_handler(tauri::generate_handler![commands::show_snap_overlay])
         .on_page_load(|win, _payload: &tauri::webview::PageLoadPayload| {
             match win.emit("decorum-page-load", ()) {
                 Ok(_) => {}

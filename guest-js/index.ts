@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-
-export async function show_snap_overlay() {
-	await invoke("plugin:decorum|show_snap_overlay");
-}
+// The show_snap_overlay function has been removed.
+// On Windows 11, the native Snap Layout flyout is now handled
+// automatically by the Rust snap module's child HWND overlay,
+// which returns HTMAXBUTTON from WM_NCHITTEST.
+// No JavaScript invocation is needed.

@@ -23,7 +23,8 @@ function waitForElm(selector) {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+(() => {
+  const setup = () => {
   // All of this tags will be replaced by the found system theme icons
   const windowCloseSvg = `@win-close`;
   const windowMinimizeSvg = `@win-minimize`;
@@ -64,7 +65,6 @@ document.addEventListener("DOMContentLoaded", () => {
           btn.innerHTML = windowMinimizeSvg;
 
           btn.addEventListener("click", () => {
-            clearTimeout(timer);
             win.minimize();
           });
 
@@ -137,4 +137,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 		`;
   });
-});
+  };
+
+  // Fix for #50/#32: scripts may be injected after DOMContentLoaded
+  // has already fired, so check readyState instead of always waiting.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setup);
+  } else {
+    setup();
+  }
+})();
