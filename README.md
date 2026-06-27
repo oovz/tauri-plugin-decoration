@@ -1,27 +1,80 @@
-# tauri-plugin-decorum
+# tauri-plugin-decoration
 
-Being a designer, I'm _very_ particular about window decorations. This Tauri (v2) plugin is an opinionated take on titlebars that my gripes with the default ones. Features:
-1. retain native features, like Windows Snap Layout.
-2. blend into your app's UI better with transparency and overlay controls.
-3. inset macOS traffic lights that are often misaligned with other window contents.
+Native window controls, custom decorations, and Windows 11 Snap Layout for Tauri v2 apps.
 
-![demo](./wheeee.gif)
+## Features
 
-## Installation and Usage
+- **Frameless window controls** — custom minimize/maximize/close buttons rendered as HTML, positioned over a transparent draggable titlebar area.
+- **Windows 11 Snap Layout** — a native Win32 child HWND overlay returns `HTMAXBUTTON` from `WM_NCHITTEST`, triggering the OS-built Snap Layout flyout on hover. No keyboard or mouse simulation.
+- **macOS traffic lights** — inset positioning for the native close/minimize/zoom buttons so they align with your app content. Also supports window transparency and window level control.
+- **Linux system icons** — window control buttons use the current icon theme (via `linicon` + `dconf`).
+- **Dark/light aware** — hover colors adapt to the user's color scheme preference.
+- **Late-injection safe** — scripts check `document.readyState` so they work even when injected after `DOMContentLoaded`.
 
-For a full example app that uses this plugin, check out [examples/tauri-app](examples/tauri-app/).
+> [!NOTE]
+> Windows 10: the overlay is created and positioned correctly, but the Snap Layout flyout is a Windows 11 feature. On Windows 10, hovering the maximize button still triggers maximize/restore — just no flyout.
 
-### install the plugin
+## Usage
 
-```bash
-cargo add tauri-plugin-decorum
+### 1. Add the plugin
+
+```toml
+# Cargo.toml
+[dependencies]
+tauri-plugin-decoration = "2"
 ```
 
-### set permissions
+### 2. Initialize in Rust
 
-You'll need to set these for your window in `src-tauri/capabilities/default.json`
+```rust
+use tauri::Manager;
+use tauri_plugin_decoration::WebviewWindowExt;
 
+fn main() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_decoration::init())
+        .setup(|app| {
+            let main_window = app.get_webview_window("main").unwrap();
+            main_window.create_overlay_titlebar().unwrap();
+
+            // macOS-only helpers
+            #[cfg(target_os = "macos")]
+            {
+                main_window.set_traffic_lights_inset(12.0, 16.0).unwrap();
+                main_window.make_transparent().unwrap();
+            }
+
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
 ```
+
+### 3. Configure window
+
+In `tauri.conf.json`, set `withGlobalTauri: true` and use frameless window options:
+
+```json
+{
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "decorations": false
+      }
+    ]
+  }
+}
+```
+
+### 4. Set permissions
+
+In `src-tauri/capabilities/default.json`:
+
+```json
 "core:window:allow-close",
 "core:window:allow-center",
 "core:window:allow-minimize",
@@ -30,78 +83,62 @@ You'll need to set these for your window in `src-tauri/capabilities/default.json
 "core:window:allow-set-focus",
 "core:window:allow-is-maximized",
 "core:window:allow-start-dragging",
-"core:window:allow-toggle-maximize",
-"decorum:allow-show-snap-overlay",
+"core:window:allow-toggle-maximize"
 ```
 
-And ensure the `withGlobalTauri` in your `tauri.conf.json` is set to `true`.
+### 5. Style the controls (optional)
 
-\*there's probably a better way to handle plugin permissions that I haven't found yet. if you have, pls lmk!
+The plugin injects buttons with these selectors:
 
+```css
+button#decoration-tb-minimize,
+button#decoration-tb-maximize,
+button#decoration-tb-close,
+div[data-tauri-decoration-tb] {}
+```
 
-### usage in tauri:
+### 6. Interactive content in the titlebar area
 
-```rust
-use tauri::Manager;
+The plugin creates a fixed-position overlay (`div[data-tauri-decoration-tb]`) at `z-index: 100` covering the top 32px of the window. This overlay handles window dragging and hosts the window control buttons. Any app content in that area will be behind the overlay and won't receive clicks.
 
-use tauri_plugin_decorum::WebviewWindowExt; // adds helper methods to WebviewWindow
+If you need interactive elements in the titlebar area (dropdown menus, navigation tabs, etc.), position your content above the overlay and use `pointer-events` to let clicks fall through to the drag region in empty areas:
 
-fn main() {
-	tauri::Builder::default()
-		.plugin(tauri_plugin_decorum::init()) // initialize the decorum plugin
-		.setup(|app| {
-			// Create a custom titlebar for main window
-			// On Windows this hides decoration and creates custom window controls
-			// On macOS it needs hiddenTitle: true and titleBarStyle: overlay
-			let main_window = app.get_webview_window("main").unwrap();
-			main_window.create_overlay_titlebar().unwrap();
+```css
+.titlebar-content {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;          /* above the decoration overlay (z-index: 100) */
+  height: 32px;
+  pointer-events: none;  /* let clicks fall through to the drag region */
+}
 
-			// Some macOS-specific helpers
-			#[cfg(target_os = "macos")] {
-				// Set a custom inset to the traffic lights
-				main_window.set_traffic_lights_inset(12.0, 16.0).unwrap();
-
-				// Make window transparent without privateApi
-				main_window.make_transparent().unwrap()
-
-				// Set window level
-				// NSWindowLevel: https://developer.apple.com/documentation/appkit/nswindowlevel
-				main_window.set_window_level(25).unwrap()
-			}
-
-			Ok(())
-		})
-		.run(tauri::generate_context!())
-		.expect("error while running tauri application");
+.titlebar-content .interactive-element {
+  pointer-events: auto;  /* re-enable clicks on menus, buttons, etc. */
 }
 ```
 
-### custom buttons with css:
+## Example App
 
-If you want to style the window controls yourself, you can use one of the following class-names to do so:
+The repository includes a demo app at [`examples/tauri-app`](examples/tauri-app) showing a custom titlebar with dropdown menus.
 
-```css
-button.decorum-tb-btn,
-button#decorum-tb-minimize,
-button#decorum-tb-maximize,
-button#decorum-tb-close,
-div[data-tauri-decorum-tb], {}
+```sh
+pnpm install
+pnpm example:dev
 ```
 
-## Development Guide
+## Platform Support
 
-PRs and issues welcome! Here's a short primer to get you started with development on this:
+| Feature | Windows | macOS | Linux |
+|---|---|---|---|
+| Custom window controls | Native HTML buttons | Native HTML buttons | System icon theme |
+| Snap Layout flyout | Windows 11 only | — | — |
+| Traffic light inset | — | Yes | — |
+| Window transparency | — | Yes | — |
+| Draggable titlebar | Yes | Yes | Yes |
 
-1. Ensure you have all the [Tauri prerequisites](https://beta.tauri.app/start/prerequisites/) set up
-2. Clone this repo
-3. Use the [example app](examples/tauri-app) as a test bed with `yarn tauri dev`
+## Credits
 
-## Roadmap
-
-~~There's some missing features I'd still like to add, all documented on the [Issues page](https://github.com/clearlysid/tauri-plugin-decorum/issues).~~
-
-All the features I wanted are now added by me or a community member — thank you so much for your contributions! 🥳
-
-The project mostly in maintainance mode now — no breaking API changes, other than architecture improvements and bugfixes. PRs are always welcome! I'll help merge them as quick as I can. In the long run I hope the core team incorporates all these within Tauri and I look forward to making this plugin obsolete.
-
-Meanwhile, I hope you find it useful. Happy building! 🥂
+Original author: [clearlysid/tauri-plugin-decorum](https://github.com/clearlysid/tauri-plugin-decorum).
+Snap Layout implementation inspired by [clarifei/tauri-plugin-frame](https://github.com/clarifei/tauri-plugin-frame) and [Hyph-M/tauri-plugin-snap-layout](https://github.com/Hyph-M/tauri-plugin-snap-layout).
