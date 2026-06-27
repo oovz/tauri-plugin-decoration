@@ -1,5 +1,7 @@
 # tauri-plugin-decoration
 
+[![crates.io](https://img.shields.io/crates/v/tauri-plugin-decoration.svg)](https://crates.io/crates/tauri-plugin-decoration)
+
 Native window controls, custom decorations, and Windows 11 Snap Layout for Tauri v2 apps.
 
 ## Features
