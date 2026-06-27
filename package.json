@@ -1,7 +1,7 @@
 {
-  "name": "tauri-plugin-decorum-api",
-  "version": "1.1.1",
-  "description": "Opinionated window decoration controls for Tauri apps",
+  "name": "tauri-plugin-decoration-api",
+  "version": "2.0.0",
+  "description": "Native window controls, custom decorations, and Windows 11 Snap Layout for Tauri v2 apps.",
   "type": "module",
   "types": "./dist-js/index.d.ts",
   "main": "./dist-js/index.cjs",

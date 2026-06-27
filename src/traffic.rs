@@ -112,7 +112,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
     let ns_window = match window.ns_window() {
         Ok(win) => win,
         Err(e) => {
-            eprintln!("decorum: failed to get ns_window for initial positioning: {:?}", e);
+            eprintln!("decoration: failed to get ns_window for initial positioning: {:?}", e);
             return;
         }
     };
@@ -138,7 +138,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         let ns_win = match window.ns_window() {
             Ok(win) => win as id,
             Err(e) => {
-                eprintln!("decorum: failed to get ns_window to mount delegate: {:?}", e);
+                eprintln!("decoration: failed to get ns_window to mount delegate: {:?}", e);
                 return;
             }
         };
@@ -167,7 +167,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
                     let ns_win = match state.window.ns_window() {
                         Ok(win) => win as id,
                         Err(e) => {
-                            eprintln!("decorum: failed to get ns_window on resize: {:?}", e);
+                            eprintln!("decoration: failed to get ns_window on resize: {:?}", e);
                             return;
                         }
                     };
@@ -265,7 +265,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
                     if let Err(e) = state.window.emit("did-enter-fullscreen", ()) {
-                        eprintln!("decorum: failed to emit did-enter-fullscreen: {:?}", e);
+                        eprintln!("decoration: failed to emit did-enter-fullscreen: {:?}", e);
                     }
                 });
 
@@ -281,7 +281,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
                     if let Err(e) = state.window.emit("will-enter-fullscreen", ()) {
-                        eprintln!("decorum: failed to emit will-enter-fullscreen: {:?}", e);
+                        eprintln!("decoration: failed to emit will-enter-fullscreen: {:?}", e);
                     }
                 });
 
@@ -297,13 +297,13 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
                     if let Err(e) = state.window.emit("did-exit-fullscreen", ()) {
-                        eprintln!("decorum: failed to emit did-exit-fullscreen: {:?}", e);
+                        eprintln!("decoration: failed to emit did-exit-fullscreen: {:?}", e);
                     }
 
                     let ns_win = match state.window.ns_window() {
                         Ok(win) => win as id,
                         Err(e) => {
-                            eprintln!("decorum: failed to get ns_window on exit fullscreen: {:?}", e);
+                            eprintln!("decoration: failed to get ns_window on exit fullscreen: {:?}", e);
                             return;
                         }
                     };
@@ -326,7 +326,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
             unsafe {
                 with_window_state(&*this, |state: &mut WindowState<R>| {
                     if let Err(e) = state.window.emit("will-exit-fullscreen", ()) {
-                        eprintln!("decorum: failed to emit will-exit-fullscreen: {:?}", e);
+                        eprintln!("decoration: failed to emit will-exit-fullscreen: {:?}", e);
                     }
                 });
 

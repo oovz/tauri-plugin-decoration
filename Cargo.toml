@@ -1,15 +1,15 @@
 [package]
-name = "tauri-plugin-decorum"
-version = "1.1.1"
-authors = ["Siddharth <siddharth99c@gmail.com>"]
-description = "Opnionated window decoration controls for Tauri apps."
+name = "tauri-plugin-decoration"
+version = "2.0.0"
+authors = ["oovz"]
+description = "Native window controls, custom decorations, and Windows 11 Snap Layout for Tauri v2 apps."
 edition = "2021"
 rust-version = "1.70"
 exclude = ["/examples", "/webview-dist", "/webview-src", "/node_modules"]
-links = "tauri-plugin-decorum"
+links = "tauri-plugin-decoration"
 license = "MIT"
-homepage = "https://github.com/clearlysid/tauri-plugin-decorum"
-repository = "https://github.com/clearlysid/tauri-plugin-decorum"
+homepage = "https://github.com/oovz/tauri-plugin-decoration"
+repository = "https://github.com/oovz/tauri-plugin-decoration"
 
 [dependencies]
 tauri = { version = "2" }

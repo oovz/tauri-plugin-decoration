@@ -32,8 +32,8 @@ body {
 	height: 100vh;
 }
 
-/* Titlebar content — fixed above the decorum overlay (z-index 100).
-   pointer-events: none lets clicks fall through to the decorum drag
+/* Titlebar content — fixed above the decoration overlay (z-index 100).
+   pointer-events: none lets clicks fall through to the decoration drag
    region below. Individual dropdown menus re-enable pointer-events. */
 .titlebar-content {
 	position: fixed;

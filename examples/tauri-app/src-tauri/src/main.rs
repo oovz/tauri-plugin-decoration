@@ -2,11 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::Manager;
-use tauri_plugin_decorum::WebviewWindowExt;
+use tauri_plugin_decoration::WebviewWindowExt;
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_decorum::init())
+        .plugin(tauri_plugin_decoration::init())
         .setup(|app| {
             // Create a custom titlebar for main window
             // On Windows this will hide decoration and render custom window controls

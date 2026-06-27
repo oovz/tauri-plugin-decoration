@@ -34,20 +34,20 @@ function waitForElm(selector) {
   const tauri = window.__TAURI__;
 
   if (!tauri) {
-    console.log("DECORUM: Tauri API not found. Exiting.");
+    console.log("DECORATION: Tauri API not found. Exiting.");
     console.log(
-      "DECORUM: Set withGlobalTauri: true in tauri.conf.json to enable.",
+      "DECORATION: Set withGlobalTauri: true in tauri.conf.json to enable.",
     );
     return;
   }
 
   const win = tauri.window.getCurrentWindow();
 
-  console.log("DECORUM: Waiting for [data-tauri-decorum-tb] ...");
+  console.log("DECORATION: Waiting for [data-tauri-decoration-tb] ...");
 
-  waitForElm("[data-tauri-decorum-tb]").then((tbEl) => {
+  waitForElm("[data-tauri-decoration-tb]").then((tbEl) => {
     const actions = document.createElement("div");
-    actions.className = "decorum-tb-actions";
+    actions.className = "decoration-tb-actions";
     actions.style.width = "fit-content";
     actions.style.display = "flex";
     actions.style.paddingRight = "0.5em";
@@ -57,8 +57,8 @@ function waitForElm(selector) {
     const createButton = (id) => {
       console.debug("createButton", id);
       const btn = document.createElement("button");
-      btn.id = "decorum-tb-" + id;
-      btn.classList.add("decorum-tb-btn");
+      btn.id = "decoration-tb-" + id;
+      btn.classList.add("decoration-tb-btn");
 
       switch (id) {
         case "minimize":
@@ -106,7 +106,7 @@ function waitForElm(selector) {
     document.head.appendChild(style);
 
     style.innerHTML = `
-			.decorum-tb-btn {
+			.decoration-tb-btn {
         color: white;
 				cursor: default;
 				border: none;
@@ -120,20 +120,20 @@ function waitForElm(selector) {
 				justify-content: center;
 				transition: background 0.1s;
       	border-radius: 50%;
-				background-color: var(--decorum-tb-actions-icon-bg, rgba(255, 255, 255, 0.2));
+				background-color: var(--decoration-tb-actions-icon-bg, rgba(255, 255, 255, 0.2));
 			}
 
-      .decorum-tb-btn:hover {
-        background-color: var(--decorum-tb-actions-icon-active-bg, rgba(255, 255, 255, 0.4));
+      .decoration-tb-btn:hover {
+        background-color: var(--decoration-tb-actions-icon-active-bg, rgba(255, 255, 255, 0.4));
       }
 
-      .decorum-tb-btn svg {
+      .decoration-tb-btn svg {
       	width: 16px;
 				height: 16px;
       }
 
-      .decorum-tb-btn svg path {
-        fill: var(--decorum-tb-actions-icon-fg, #ffffff);
+      .decoration-tb-btn svg path {
+        fill: var(--decoration-tb-actions-icon-fg, #ffffff);
       }
 		`;
   });

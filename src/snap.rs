@@ -30,17 +30,17 @@ unsafe impl Send for SendHwnd {}
 unsafe impl Sync for SendHwnd {}
 
 const SNAP_CLASS: &[u16] = &[
-    b'D' as u16, b'e' as u16, b'c' as u16, b'o' as u16, b'r' as u16, b'u' as u16, b'm' as u16,
-    b'S' as u16, b'n' as u16, b'a' as u16, b'p' as u16, b'O' as u16, b'v' as u16, b'e' as u16,
-    b'r' as u16, b'l' as u16, b'a' as u16, b'y' as u16, 0,
+    b'D' as u16, b'e' as u16, b'c' as u16, b'o' as u16, b'r' as u16, b'a' as u16, b't' as u16,
+    b'i' as u16, b'o' as u16, b'n' as u16, b'S' as u16, b'n' as u16, b'a' as u16, b'p' as u16,
+    b'O' as u16, b'v' as u16, b'e' as u16, b'r' as u16, b'l' as u16, b'a' as u16, b'y' as u16, 0,
 ];
-const SUBCLASS_ID: usize = 0x6465_636f_7275_6d;
-const EVENT_MOUSEENTER: &str = "decorum://snap/mouseenter";
-const EVENT_MOUSELEAVE: &str = "decorum://snap/mouseleave";
-const EVENT_MOUSEDOWN: &str = "decorum://snap/mousedown";
-const EVENT_MOUSEUP: &str = "decorum://snap/mouseup";
-const EVENT_CLICK: &str = "decorum://snap/click";
-const EVENT_MOUSEMOVE: &str = "decorum://snap/mousemove";
+const SUBCLASS_ID: usize = 0x4465_636f_7261_7469;
+const EVENT_MOUSEENTER: &str = "decoration://snap/mouseenter";
+const EVENT_MOUSELEAVE: &str = "decoration://snap/mouseleave";
+const EVENT_MOUSEDOWN: &str = "decoration://snap/mousedown";
+const EVENT_MOUSEUP: &str = "decoration://snap/mouseup";
+const EVENT_CLICK: &str = "decoration://snap/click";
+const EVENT_MOUSEMOVE: &str = "decoration://snap/mousemove";
 
 static SNAP_WINDOWS: std::sync::LazyLock<Mutex<HashMap<isize, SnapState>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));

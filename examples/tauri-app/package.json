@@ -13,7 +13,7 @@
     "react": "^19",
     "react-dom": "^19",
     "@tauri-apps/api": "^2",
-    "tauri-plugin-decorum-api": "workspace:*"
+    "tauri-plugin-decoration-api": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19",

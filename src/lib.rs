@@ -14,7 +14,7 @@ mod snap;
 #[macro_use]
 extern crate objc;
 
-/// Extensions to [`tauri::App`], [`tauri::AppHandle`] and [`tauri::Window`] to access the decorum APIs.
+/// Extensions to [`tauri::App`], [`tauri::AppHandle`] and [`tauri::Window`] to access the decoration APIs.
 pub trait WebviewWindowExt {
     fn create_overlay_titlebar(&self) -> Result<&WebviewWindow, Error>;
     #[cfg(target_os = "macos")]
@@ -35,14 +35,14 @@ impl<'a> WebviewWindowExt for WebviewWindow {
 
         let win2 = self.clone();
 
-        self.listen("decorum-page-load", move |_event| {
-            // println!("decorum-page-load event received")
+        self.listen("decoration-page-load", move |_event| {
+            // println!("decoration-page-load event received")
 
             // Create a transparent draggable area for the titlebar
             let script_tb = include_str!("js/titlebar.js");
 
             win2.eval(script_tb)
-                .unwrap_or_else(|e| println!("decorum error: {:?}", e));
+                .unwrap_or_else(|e| println!("decoration error: {:?}", e));
 
             // Custom window controls for linux
             #[cfg(target_os = "linux")]
@@ -107,7 +107,7 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                 );
 
                 win2.eval(&control_script)
-                    .unwrap_or_else(|e| println!("decorum error: {:?}", e));
+                    .unwrap_or_else(|e| println!("decoration error: {:?}", e));
             }
 
             // On Windows, create custom window controls and install
@@ -145,7 +145,7 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                 );
 
                 win2.eval(script_controls.as_str())
-                    .unwrap_or_else(|e| println!("decorum error: {:?}", e));
+                    .unwrap_or_else(|e| println!("decoration error: {:?}", e));
 
                 // Install the native Win32 child HWND overlay for Snap Layout.
                 // The overlay returns HTMAXBUTTON from WM_NCHITTEST, which is
@@ -159,7 +159,7 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                         58,
                         right_index.saturating_sub(1),
                     ) {
-                        eprintln!("decorum: failed to install snap overlay: {:?}", e);
+                        eprintln!("decoration: failed to install snap overlay: {:?}", e);
                     }
                 }
 
@@ -251,11 +251,11 @@ impl<'a> WebviewWindowExt for WebviewWindow {
 }
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("decorum")
+    Builder::new("decoration")
         .on_page_load(|win, _payload: &tauri::webview::PageLoadPayload| {
-            match win.emit("decorum-page-load", ()) {
+            match win.emit("decoration-page-load", ()) {
                 Ok(_) => {}
-                Err(e) => println!("decorum error: {:?}", e),
+                Err(e) => println!("decoration error: {:?}", e),
             }
         })
         .on_window_ready(|_win| {
@@ -297,7 +297,7 @@ where
                 // Don't unwrap — panicking inside run_on_main_thread is
                 // silently swallowed and can stop controls from rendering.
                 if let Err(e) = main_action(&win2) {
-                    eprintln!("decorum: main_thread action failed: {:?}", e);
+                    eprintln!("decoration: main_thread action failed: {:?}", e);
                 }
             }) {
                 Ok(_) => Ok(win),

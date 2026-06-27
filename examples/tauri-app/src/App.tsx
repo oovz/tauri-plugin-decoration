@@ -81,12 +81,12 @@ function App() {
 					<DropdownMenu label="Help" items={helpItems} />
 				</div>
 				<span className="app-title">
-					Decorum Demo
+					Decoration Demo
 				</span>
 			</div>
 
 			<div className="app-body">
-				<h1>Decorum Plugin Demo</h1>
+				<h1>Decoration Plugin Demo</h1>
 				<p>
 					This window uses a frameless decoration with custom window controls
 					and a menu bar in the titlebar area.

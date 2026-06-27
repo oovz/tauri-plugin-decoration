@@ -24,16 +24,16 @@ function waitForElm(selector) {
 		const tauri = window.__TAURI__;
 
 		if (!tauri) {
-			console.log("DECORUM: Tauri API not found. Exiting.");
+			console.log("DECORATION: Tauri API not found. Exiting.");
 			console.log(
-				"DECORUM: Set withGlobalTauri: true in tauri.conf.json to enable.",
+				"DECORATION: Set withGlobalTauri: true in tauri.conf.json to enable.",
 			);
 			return;
 		}
 
 		const win = tauri.window.getCurrentWindow();
 
-		console.log("DECORUM: Waiting for [data-tauri-decorum-tb] ...");
+		console.log("DECORATION: Waiting for [data-tauri-decoration-tb] ...");
 
 		// Add debounce function
 		const debounce = (func, delay) => {
@@ -81,9 +81,9 @@ function waitForElm(selector) {
 		// pointer events over the maximize button.
 		const hitTestControls = (x, y) => {
 			const element = document.elementFromPoint(x, y);
-			const button = element?.closest?.("[id^='decorum-tb-']");
+			const button = element?.closest?.("[id^='decoration-tb-']");
 			setActiveControl(
-				button ? button.id.slice("decorum-tb-".length) : null,
+				button ? button.id.slice("decoration-tb-".length) : null,
 			);
 		};
 
@@ -96,7 +96,7 @@ function waitForElm(selector) {
 		const createButton = (id) => {
 			const btn = document.createElement("button");
 
-			btn.id = "decorum-tb-" + id;
+			btn.id = "decoration-tb-" + id;
 			btn.style.width = "58px";
 			btn.style.height = "32px";
 			btn.style.border = "none";
@@ -169,14 +169,14 @@ function waitForElm(selector) {
 					// Rust snap module's child HWND.  These keep hover state
 					// in sync and forward clicks so that the native Windows
 					// 11 Snap Layout flyout works without keyboard simulation.
-					win.listen("decorum://snap/mousemove", ({ payload }) => {
+					win.listen("decoration://snap/mousemove", ({ payload }) => {
 						if (Array.isArray(payload)) hitTestControls(payload[0], payload[1]);
 					});
-					win.listen("decorum://snap/mouseenter", () => setHover(true));
-					win.listen("decorum://snap/mouseleave", () => setHover(false));
-					win.listen("decorum://snap/mousedown", () => setHover(true));
-					win.listen("decorum://snap/mouseup", () => setHover(true));
-					win.listen("decorum://snap/click", () => toggleMaximize());
+					win.listen("decoration://snap/mouseenter", () => setHover(true));
+					win.listen("decoration://snap/mouseleave", () => setHover(false));
+					win.listen("decoration://snap/mousedown", () => setHover(true));
+					win.listen("decoration://snap/mouseup", () => setHover(true));
+					win.listen("decoration://snap/click", () => toggleMaximize());
 
 					win.onResized(() => {
 						win.isMaximized().then((maximized) => {
@@ -202,12 +202,12 @@ function waitForElm(selector) {
 
 		// Debounce the control creation
 		const debouncedCreateControls = debounce(() => {
-			const tbEl = document.querySelector("[data-tauri-decorum-tb]");
+			const tbEl = document.querySelector("[data-tauri-decoration-tb]");
 			if (!tbEl) return;
 
 			// Check if controls already exist
-			if (tbEl.querySelector("[id^='decorum-tb-']")) {
-				console.log("DECORUM: Controls already exist. Skipping creation.");
+			if (tbEl.querySelector("[id^='decoration-tb-']")) {
+				console.log("DECORATION: Controls already exist. Skipping creation.");
 				return;
 			}
 
@@ -223,7 +223,7 @@ function waitForElm(selector) {
 		const observer = new MutationObserver((mutations) => {
 			for (let mutation of mutations) {
 				if (mutation.type === "childList") {
-					const tbEl = document.querySelector("[data-tauri-decorum-tb]");
+					const tbEl = document.querySelector("[data-tauri-decoration-tb]");
 					if (tbEl) {
 						debouncedCreateControls();
 						break;
@@ -232,8 +232,8 @@ function waitForElm(selector) {
 			}
 		});
 
-		// data-tauri-decorum-tb may be created before observer starts
-		if (document.querySelector("[data-tauri-decorum-tb]")) {
+		// data-tauri-decoration-tb may be created before observer starts
+		if (document.querySelector("[data-tauri-decoration-tb]")) {
 			debouncedCreateControls();
 			return;
 		}

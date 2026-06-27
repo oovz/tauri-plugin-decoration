@@ -1,16 +1,16 @@
 
 (() => {
 	const setup = () => {
-		let tbEl = document.querySelector("[data-tauri-decorum-tb]");
+		let tbEl = document.querySelector("[data-tauri-decoration-tb]");
 
 		if (!tbEl) {
 			console.log(
-				"DECORUM: Element with data-tauri-decorum-tb not found. Creating one.",
+				"DECORATION: Element with data-tauri-decoration-tb not found. Creating one.",
 			);
 
 			// Create titlebar element
 			tbEl = document.createElement("div");
-			tbEl.setAttribute("data-tauri-decorum-tb", "");
+			tbEl.setAttribute("data-tauri-decoration-tb", "");
 			tbEl.setAttribute("role", "group");
 			tbEl.setAttribute("lang", "en");
 			tbEl.setAttribute("aria-label", "Window controls");
