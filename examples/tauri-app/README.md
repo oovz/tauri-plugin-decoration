@@ -1,8 +1,12 @@
-# Svelte + Vite
+# Decorum Example App
 
-This template should help get you started developing with Tauri and Svelte in Vite.
+Demo of `tauri-plugin-decorum` showing custom titlebar content (dropdown menus) and native window controls.
 
-## Recommended IDE Setup
+## Running
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+From the repository root:
 
+```sh
+pnpm install
+pnpm example:dev
+```
