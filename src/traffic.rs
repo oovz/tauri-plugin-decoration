@@ -4,7 +4,7 @@
 // https://github.com/hoppscotch/hoppscotch/blob/286fcd2bb08a84f027b10308d1e18da368f95ebf/packages/hoppscotch-selfhost-desktop/src-tauri/src/mac/window.rs
 
 use objc::{msg_send, sel, sel_impl};
-use rand::{distributions::Alphanumeric, Rng, rng};
+use rand::{distr::Alphanumeric, Rng, rng};
 use tauri::{Emitter, Runtime, Window};
 
 const WINDOW_CONTROL_PAD_X: f64 = 12.0;
@@ -378,7 +378,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         };
         let app_box = Box::into_raw(Box::new(app_state)) as *mut c_void;
         let random_str: String = rng()
-            .sample_iter(&Alphanumeric)
+            .sample_iter(Alphanumeric)
             .take(20)
             .map(char::from)
             .collect();
