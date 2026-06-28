@@ -4,6 +4,8 @@
 
 Native window controls, custom decorations, and Windows 11 Snap Layout for Tauri v2 apps.
 
+<video src="assets/windows.mp4" controls muted width="100%"></video>
+
 ## Features
 
 - **Frameless window controls** — custom minimize/maximize/close buttons rendered as HTML, positioned over a transparent draggable titlebar area.
