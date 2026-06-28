@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface MenuItem {
 	label: string;
@@ -51,8 +52,7 @@ function DropdownMenu({ label, items }: { label: string; items: MenuItem[] }) {
 }
 
 function App() {
-	const tauri = (window as any).__TAURI__;
-	const win = tauri?.window?.getCurrentWindow();
+	const win = getCurrentWindow();
 
 	const fileItems: MenuItem[] = [
 		{ label: "New Window", action: () => console.log("New Window") },
