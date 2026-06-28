@@ -4,7 +4,7 @@
 // https://github.com/hoppscotch/hoppscotch/blob/286fcd2bb08a84f027b10308d1e18da368f95ebf/packages/hoppscotch-selfhost-desktop/src-tauri/src/mac/window.rs
 
 use objc::{msg_send, sel, sel_impl};
-use rand::{distr::Alphanumeric, Rng, rng};
+use rand::{distr::Alphanumeric, rng, Rng};
 use tauri::{Emitter, Runtime, Window};
 
 const WINDOW_CONTROL_PAD_X: f64 = 12.0;
@@ -112,7 +112,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
             Ok(win) => win as id,
             Err(_) => return,
         };
-        
+
         // Quick check: if close button doesn't exist, this window probably doesn't have decorations
         let close = ns_win.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
         if close.is_null() {
@@ -124,7 +124,10 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
     let ns_window = match window.ns_window() {
         Ok(win) => win,
         Err(e) => {
-            eprintln!("decoration: failed to get ns_window for initial positioning: {:?}", e);
+            eprintln!(
+                "decoration: failed to get ns_window for initial positioning: {:?}",
+                e
+            );
             return;
         }
     };
@@ -150,7 +153,10 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         let ns_win = match window.ns_window() {
             Ok(win) => win as id,
             Err(e) => {
-                eprintln!("decoration: failed to get ns_window to mount delegate: {:?}", e);
+                eprintln!(
+                    "decoration: failed to get ns_window to mount delegate: {:?}",
+                    e
+                );
                 return;
             }
         };
@@ -315,7 +321,10 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
                     let ns_win = match state.window.ns_window() {
                         Ok(win) => win as id,
                         Err(e) => {
-                            eprintln!("decoration: failed to get ns_window on exit fullscreen: {:?}", e);
+                            eprintln!(
+                                "decoration: failed to get ns_window on exit fullscreen: {:?}",
+                                e
+                            );
                             return;
                         }
                     };
@@ -383,7 +392,7 @@ pub fn setup_traffic_light_positioner<R: Runtime>(window: Window<R>) {
         // Are we deallocing this properly ? (I miss safe Rust :(  )
         let window_label = window.label().to_string();
 
-        let app_state = WindowState { 
+        let app_state = WindowState {
             window,
             traffic_light_x: WINDOW_CONTROL_PAD_X,
             traffic_light_y: WINDOW_CONTROL_PAD_Y,
@@ -453,12 +462,11 @@ pub fn update_traffic_light_positions(window: &tauri::WebviewWindow, x: f64, y: 
         }
 
         // Try to access the ivar directly with proper type annotation
-        let app_box: *mut c_void = match std::panic::catch_unwind(|| {
-            *(*delegate).get_ivar::<*mut c_void>("app_box")
-        }) {
-            Ok(ptr) if !ptr.is_null() => ptr,
-            _ => return, // Either the ivar doesn't exist or it's null
-        };
+        let app_box: *mut c_void =
+            match std::panic::catch_unwind(|| *(*delegate).get_ivar::<*mut c_void>("app_box")) {
+                Ok(ptr) if !ptr.is_null() => ptr,
+                _ => return, // Either the ivar doesn't exist or it's null
+            };
 
         let state: &mut WindowState<Wry> = &mut *(app_box as *mut WindowState<Wry>);
         state.traffic_light_x = x;

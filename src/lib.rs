@@ -4,7 +4,7 @@ use tauri::{Emitter, Error, Listener, Runtime, WebviewWindow};
 #[cfg(target_os = "macos")]
 mod traffic;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 mod dconf;
 
 #[cfg(target_os = "windows")]
@@ -25,7 +25,7 @@ pub trait WebviewWindowExt {
     fn set_window_level(&self, level: u32) -> Result<&WebviewWindow, Error>;
 }
 
-impl<'a> WebviewWindowExt for WebviewWindow {
+impl WebviewWindowExt for WebviewWindow {
     /// Create a custom titlebar overlay.
     /// This will remove the default titlebar and create a draggable area for the titlebar.
     /// On Windows, it will also create custom window controls.
@@ -43,7 +43,7 @@ impl<'a> WebviewWindowExt for WebviewWindow {
 
         let win2 = self.clone();
 
-        self.listen("decoration-page-load", move |_event| {
+        let event_id = self.listen("decoration-page-load", move |_event| {
             // println!("decoration-page-load event received")
 
             // Create a transparent draggable area for the titlebar
@@ -93,18 +93,22 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                     };
                 }
 
-                controls.remove(controls.len() - 1);
+                // "restore" was pushed only so its icon gets loaded above; it is
+                // not a real window control, so drop it before building the
+                // final control list.
+                controls.retain(|c| c != "restore");
 
-                // return this string style 'appmenu:minimize,maximize,close'
-                if let Ok(app_menu_config) =
-                    dconf::read("/org/gnome/desktop/wm/preferences/button-layout")
-                {
-                    controls = app_menu_config
-                        .trim_start_matches("appmenu:")
-                        .split(',')
-                        .map(|x| x.to_string())
+                if let Some(layout_controls) = dconf::read_button_layout() {
+                    let enabled_controls = controls.clone();
+                    let configured_controls = layout_controls
+                        .into_iter()
+                        .filter(|control| enabled_controls.contains(control))
                         .collect::<Vec<String>>();
-                };
+
+                    if !configured_controls.is_empty() {
+                        controls = configured_controls;
+                    }
+                }
 
                 let controls = format!("{:?}", controls);
 
@@ -123,21 +127,19 @@ impl<'a> WebviewWindowExt for WebviewWindow {
             #[cfg(target_os = "windows")]
             {
                 let mut controls = Vec::new();
-                let mut right_index: u32 = 0;
                 let mut has_maximize = false;
+                let has_close = win2.is_closable().unwrap_or(false);
 
                 if win2.is_minimizable().unwrap_or(false) {
                     controls.push("minimize");
-                    right_index += 1;
                 }
 
                 if win2.is_maximizable().unwrap_or(false) && win2.is_resizable().unwrap_or(false) {
                     controls.push("maximize");
                     has_maximize = true;
-                    right_index += 1;
                 }
 
-                if win2.is_closable().unwrap_or(false) {
+                if has_close {
                     controls.push("close");
                 }
 
@@ -160,32 +162,21 @@ impl<'a> WebviewWindowExt for WebviewWindow {
                 // the Windows-supported path for showing the Snap Layout
                 // flyout on Windows 11 — no keyboard or mouse simulation.
                 if has_maximize {
+                    let right_index = u32::from(has_close);
                     let snap_win = win2.clone();
-                    if let Err(e) = snap::install(
-                        &snap_win,
-                        32,
-                        58,
-                        right_index.saturating_sub(1),
-                    ) {
+                    if let Err(e) = snap::install(&snap_win, 32, 58, right_index) {
                         eprintln!("decoration: failed to install snap overlay: {:?}", e);
                     }
                 }
+            }
+        });
 
-                // Unlisten the page-load event when the window closes so the
-                // listener doesn't leak across navigations/reloads. We use
-                // once-only registration via a flag stored on the window to
-                // avoid stacking duplicate on_window_event handlers on every
-                // page load.
-                let win3 = win2.clone();
-                let event_id = _event.id();
-                win2.on_window_event(move |eve| match eve {
-                    tauri::WindowEvent::CloseRequested { .. } => {
-                        win3.unlisten(event_id);
-                        #[cfg(target_os = "windows")]
-                        let _ = snap::uninstall(&win3);
-                    }
-                    _ => {}
-                });
+        let win3 = self.clone();
+        self.on_window_event(move |eve| {
+            if let tauri::WindowEvent::CloseRequested { .. } = eve {
+                win3.unlisten(event_id);
+                #[cfg(target_os = "windows")]
+                let _ = snap::uninstall(&win3);
             }
         });
 
@@ -310,7 +301,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .on_window_ready(|_win| {
             #[cfg(target_os = "macos")]
             traffic::setup_traffic_light_positioner(_win);
-            return;
         })
         .build()
 }
