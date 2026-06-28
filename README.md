@@ -42,6 +42,11 @@ fn main() {
             // macOS-only helpers
             #[cfg(target_os = "macos")]
             {
+                // Position the native traffic-light buttons.
+                //   x = horizontal offset from the left edge (direct).
+                //   y = extra titlebar container height; buttons are
+                //       vertically centered within it, so larger y
+                //       pushes the cluster down from the top edge.
                 main_window.set_traffic_lights_inset(12.0, 16.0).unwrap();
                 main_window.make_transparent().unwrap();
             }

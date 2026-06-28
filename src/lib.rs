@@ -192,8 +192,28 @@ impl<'a> WebviewWindowExt for WebviewWindow {
         Ok(self)
     }
 
-    /// Set the inset of the traffic lights.
-    /// This will move the traffic lights to the specified position.
+    /// Position the macOS traffic-light buttons (close/minimize/zoom).
+    ///
+    /// The two parameters control different things because the buttons are
+    /// native OS controls positioned within an AppKit titlebar container:
+    ///
+    /// - `x` — **horizontal position**, in points from the left edge of the
+    ///   window's content. The first button is placed at `x`, and each
+    ///   subsequent button is placed `20pt` to its right. This is a direct
+    ///   offset.
+    ///
+    /// - `y` — **titlebar container height**, in points, added on top of the
+    ///   button height (`container_height = button_height + y`). The buttons
+    ///   are then **vertically centered** within that container. This is an
+    ///   *indirect* control: increasing `y` makes the container taller and
+    ///   pushes the centered buttons down from the window's top edge;
+    ///   decreasing it pulls them up. It does *not* offset the buttons off
+    ///   center within the container.
+    ///
+    /// As a side effect, this method exposes the right edge of the last
+    /// button to the webview as the `--decoration-traffic-light-left` CSS
+    /// custom property so app content can avoid overlapping the cluster.
+    ///
     /// This is only available on macOS.
     #[cfg(target_os = "macos")]
     fn set_traffic_lights_inset(&self, x: f32, y: f32) -> Result<&WebviewWindow, Error> {
