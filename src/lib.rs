@@ -208,39 +208,55 @@ impl WebviewWindowExt for WebviewWindow {
     /// This is only available on macOS.
     #[cfg(target_os = "macos")]
     fn set_traffic_lights_inset(&self, x: f32, y: f32) -> Result<&WebviewWindow, Error> {
-        ensure_main_thread(self, move |win| {
-            let ns_window = win.ns_window()?;
-            let ns_window_handle = traffic::UnsafeWindowHandle(ns_window);
+        let update = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let update_out = update.clone();
 
-            // Store the custom position in the window state
-            traffic::update_traffic_light_positions(win, x.into(), y.into());
+        self.with_webview(move |webview| {
+            let ns_window = webview.ns_window();
+            let ns_window_handle = traffic::UnsafeWindowHandle(ns_window);
 
             // Apply the position immediately. position_traffic_lights returns
             // the right-edge x of the last traffic-light button so we can
             // expose it to the webview as a CSS custom property. Apps can then
             // offset their own titlebar content (e.g. menu bars) with a single
             // line of CSS: `padding-left: var(--decoration-traffic-light-left, 0px)`.
-            let cluster_right_edge =
-                traffic::position_traffic_lights(ns_window_handle, x.into(), y.into());
+            let cluster_right_edge = match traffic::traffic_light_refresh_action(
+                traffic::traffic_light_window_state(ns_window_handle),
+            ) {
+                traffic::TrafficLightRefreshAction::ExposeCollapsed => 0.0,
+                traffic::TrafficLightRefreshAction::PositionAndExpose => {
+                    traffic::position_traffic_lights(ns_window_handle, x.into(), y.into())
+                }
+            };
 
-            if cluster_right_edge > 0.0 {
-                // Add a small breathing gap after the last button.
-                let left_clearance = cluster_right_edge + 8.0;
-                let script = format!(
-                    "document.documentElement.style.setProperty(\
-                     '--decoration-traffic-light-left','{0}px')",
-                    left_clearance
-                );
-                if let Err(e) = win.eval(&script) {
+            // Store the custom position in the window state and remember the
+            // measured normal-state width when the native controls are visible.
+            let update_state = traffic::update_traffic_light_positions(
+                ns_window_handle,
+                x.into(),
+                y.into(),
+                cluster_right_edge,
+            );
+
+            if let Ok(mut slot) = update_out.lock() {
+                *slot = Some(update_state);
+            }
+        })?;
+
+        let update = update.lock().ok().and_then(|mut update| update.take());
+        if let Some((frontend_ready, cluster_right_edge)) = update {
+            if frontend_ready {
+                let script = traffic::traffic_light_left_css_updater_script(cluster_right_edge);
+                if let Err(e) = self.eval(&script) {
                     eprintln!(
-                        "decoration: failed to expose traffic-light CSS var: {:?}",
+                        "decoration: failed to update traffic-light CSS var: {:?}",
                         e
                     );
                 }
             }
+        }
 
-            Ok(win)
-        })
+        Ok(self)
     }
 
     /// Set the window background to transparent.
@@ -293,6 +309,13 @@ impl WebviewWindowExt for WebviewWindow {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("decoration")
         .on_page_load(|win, _payload: &tauri::webview::PageLoadPayload| {
+            if !should_handle_page_load_event(_payload.event()) {
+                return;
+            }
+
+            #[cfg(target_os = "macos")]
+            traffic::inject_traffic_light_css_updater(win);
+
             match win.emit("decoration-page-load", ()) {
                 Ok(_) => {}
                 Err(e) => println!("decoration error: {:?}", e),
@@ -303,6 +326,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             traffic::setup_traffic_light_positioner(_win);
         })
         .build()
+}
+
+fn should_handle_page_load_event(event: tauri::webview::PageLoadEvent) -> bool {
+    matches!(event, tauri::webview::PageLoadEvent::Finished)
 }
 
 #[cfg(target_os = "macos")]
@@ -343,5 +370,17 @@ where
                 Err(e) => Err(e),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_handle_page_load_event;
+    use tauri::webview::PageLoadEvent;
+
+    #[test]
+    fn decoration_page_load_injection_runs_only_after_finished_load() {
+        assert!(!should_handle_page_load_event(PageLoadEvent::Started));
+        assert!(should_handle_page_load_event(PageLoadEvent::Finished));
     }
 }
