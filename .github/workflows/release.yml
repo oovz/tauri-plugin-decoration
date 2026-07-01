@@ -32,11 +32,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build detailed release notes
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_TAG="${{ inputs.tag || github.ref_name }}"
+
+          # Find the most recent tag strictly before the current one.
+          PREV_TAG="$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)"
+
+          {
+            if [ -n "${PREV_TAG}" ]; then
+              echo "## What's changed since ${PREV_TAG}"
+              echo ""
+              echo "Full commit log from \`${PREV_TAG}\` to \`${CURRENT_TAG}\`:"
+            else
+              echo "## What's new"
+              echo ""
+              echo "Full commit log up to \`${CURRENT_TAG}\`:"
+            fi
+            echo ""
+            echo "| Commit | Subject | Author | Date |"
+            echo "| --- | --- | --- | --- |"
+            if [ -n "${PREV_TAG}" ]; then
+              git log --no-merges --pretty=format:'| %h | %s | %an | %ad |' --date=short "${PREV_TAG}..${CURRENT_TAG}"
+            else
+              git log --no-merges --pretty=format:'| %h | %s | %an | %ad |' --date=short "${CURRENT_TAG}"
+            fi
+            echo ""
+          } > release_notes.md
+
+          echo "Generated release notes:"
+          cat release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
+          body_path: release_notes.md
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(inputs.tag || github.ref_name, '-') }}
