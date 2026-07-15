@@ -1,0 +1,21 @@
+{
+  "productName": "decoration-compat-2-9",
+  "version": "0.0.0",
+  "identifier": "com.oovz.decoration.compat29",
+  "build": {
+    "frontendDist": "frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Tauri 2.9 Compatibility",
+        "visible": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../../../examples/tauri-app/src-tauri/icons/32x32.png"]
+  }
+}

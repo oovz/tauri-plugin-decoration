@@ -1,0 +1,7 @@
+{
+  "identifier": "default",
+  "description": "Compile-time permission integration for the minimum Tauri stack",
+  "windows": ["main"],
+  "permissions": ["decoration:default"]
+}
+

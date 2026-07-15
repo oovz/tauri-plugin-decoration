@@ -1,0 +1,490 @@
+use std::{fs, path::PathBuf, process::Command};
+
+fn root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn read(path: &str) -> String {
+    let path = root().join(path);
+    fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
+fn cargo_section<'a>(manifest: &'a str, heading: &str) -> &'a str {
+    let heading = format!("[{heading}]");
+    let start = manifest
+        .find(&heading)
+        .unwrap_or_else(|| panic!("missing Cargo manifest section {heading}"));
+    let body = &manifest[start + heading.len()..];
+    let end = body.find("\n[").unwrap_or(body.len());
+    &body[..end]
+}
+
+fn lock_has_package(lockfile: &str, name: &str, version: &str) -> bool {
+    lockfile.split("[[package]]").any(|package| {
+        package.contains(&format!("name = \"{name}\""))
+            && package.contains(&format!("version = \"{version}\""))
+    })
+}
+
+#[test]
+fn release_manifest_has_the_supported_version_and_dependency_boundary() {
+    let manifest = read("Cargo.toml");
+    let package = cargo_section(&manifest, "package");
+    let dependencies = cargo_section(&manifest, "dependencies");
+    let features = cargo_section(&manifest, "features");
+
+    assert!(package.contains("version = \"2.1.0\""));
+    assert!(package.contains("rust-version = \"1.88\""));
+    assert!(dependencies.contains(
+        "tauri = { version = \"2.9.0\", default-features = false, features = [\"wry\"] }"
+    ));
+    assert!(!dependencies.contains("tauri = { version = \"=2.9.0\""));
+    assert!(features.contains("default = []"));
+    assert!(features
+        .contains("macos-transparency = [\"tauri/macos-private-api\", \"objc2-app-kit/NSColor\"]"));
+    assert!(!dependencies.contains("macos-private-api"));
+}
+
+#[test]
+fn locked_baseline_example_and_minimum_fixture_use_tauri_2_9() {
+    let root_lock = read("Cargo.lock");
+    let example_lock = read("examples/tauri-app/src-tauri/Cargo.lock");
+    let example_manifest = read("examples/tauri-app/src-tauri/Cargo.toml");
+    let example_package = read("examples/tauri-app/package.json");
+    let frontend_lock = read("pnpm-lock.yaml");
+    let fixture_manifest = read("tests/compatibility/tauri-2.9/Cargo.toml");
+    let fixture_lock = read("tests/compatibility/tauri-2.9/Cargo.lock");
+
+    for lock in [&root_lock, &example_lock, &fixture_lock] {
+        for (name, version) in [
+            ("tauri", "2.9.0"),
+            ("tauri-build", "2.5.0"),
+            ("tauri-codegen", "2.5.0"),
+            ("tauri-macros", "2.5.0"),
+            ("tauri-plugin", "2.5.2"),
+            ("tauri-runtime", "2.9.0"),
+            ("tauri-runtime-wry", "2.9.0"),
+            ("tauri-utils", "2.8.1"),
+            ("wry", "0.53.4"),
+        ] {
+            assert!(
+                lock_has_package(lock, name, version),
+                "missing {name} {version}"
+            );
+        }
+        assert!(!lock.contains("\nname = \"cocoa\"\n"));
+        assert!(!lock.contains("\nname = \"objc\"\n"));
+    }
+    assert!(example_manifest.contains(
+        "tauri = { version = \"=2.9.0\", default-features = false, features = [\"wry\"] }"
+    ));
+    assert!(example_manifest.contains(
+        "tauri-build = { version = \"=2.5.0\", default-features = false, features = [] }"
+    ));
+    assert!(example_package.contains("\"@tauri-apps/api\": \"2.9.0\""));
+    assert!(example_package.contains("\"@tauri-apps/cli\": \"2.9.0\""));
+    assert!(frontend_lock.contains("'@tauri-apps/api@2.9.0':"));
+    assert!(frontend_lock.contains("'@tauri-apps/cli@2.9.0':"));
+    assert!(fixture_manifest.contains(
+        "tauri = { version = \"=2.9.0\", default-features = false, features = [\"wry\"] }"
+    ));
+    assert!(fixture_manifest.contains(
+        "tauri-plugin-decoration = { path = \"../../..\", features = [\"macos-transparency\"] }"
+    ));
+
+    for lockfile in [
+        "Cargo.lock",
+        "examples/tauri-app/src-tauri/Cargo.lock",
+        "tests/compatibility/tauri-2.9/Cargo.lock",
+    ] {
+        assert!(root().join(lockfile).is_file(), "missing {lockfile}");
+    }
+}
+
+#[test]
+fn published_crate_uses_a_small_allowlist() {
+    let manifest = read("Cargo.toml");
+    let package = cargo_section(&manifest, "package");
+
+    for path in [
+        "/src/**/*.rs",
+        "/src/**/*.js",
+        "/src/**/*.css",
+        "/permissions/**/*.toml",
+        "/permissions/**/*.json",
+        "/permissions/**/*.md",
+        "/build.rs",
+        "/README.md",
+        "/LICENSE",
+    ] {
+        assert!(
+            package.contains(&format!("\"{path}\"")),
+            "package allowlist is missing {path}"
+        );
+    }
+    assert!(!package.contains("exclude = ["));
+}
+
+#[test]
+fn generated_application_schemas_are_ignored_not_packaged_inputs() {
+    let gitignore = read(".gitignore");
+    assert!(gitignore.contains("/examples/tauri-app/src-tauri/gen/"));
+
+    let schema_path = "examples/tauri-app/src-tauri/gen";
+    let tracked = Command::new("git")
+        .args(["ls-files", schema_path])
+        .current_dir(root())
+        .output()
+        .expect("failed to inspect tracked example schemas");
+    let deleted = Command::new("git")
+        .args(["diff", "--name-only", "--diff-filter=D", "--", schema_path])
+        .current_dir(root())
+        .output()
+        .expect("failed to inspect pending schema deletions");
+    assert!(tracked.status.success());
+    assert!(deleted.status.success());
+    let deleted = String::from_utf8(deleted.stdout).expect("schema paths must be UTF-8");
+    for tracked in String::from_utf8(tracked.stdout)
+        .expect("schema paths must be UTF-8")
+        .lines()
+    {
+        assert!(
+            deleted.lines().any(|path| path == tracked),
+            "tracked generated schema is not scheduled for removal: {tracked}"
+        );
+    }
+
+    assert!(root().join("permissions/default.toml").is_file());
+    assert!(root().join("permissions/schemas/schema.json").is_file());
+}
+
+#[test]
+fn node_workspace_is_private_tooling_not_a_guest_package() {
+    let package = read("package.json");
+    assert!(package.contains("\"private\": true"));
+    assert!(package.contains("\"node\": \">=24.0.0 <25\""));
+    assert!(package.contains("\"pnpm\": \"11.9.0\""));
+    assert!(!package.contains("\"version\":"));
+    assert!(!package.contains("\"dependencies\":"));
+    assert!(!package.contains("\"devDependencies\":"));
+
+    for field in ["\"main\":", "\"module\":", "\"exports\":", "\"files\":"] {
+        assert!(!package.contains(field));
+    }
+    for obsolete in ["guest-js", "dist-js", "rollup.config.js", "tsconfig.json"] {
+        assert!(
+            !root().join(obsolete).exists(),
+            "obsolete artifact {obsolete}"
+        );
+    }
+}
+
+#[test]
+fn javascript_is_embedded_runtime_code_not_a_guest_package() {
+    let frontend = read("src/frontend.rs");
+    let protocol = read("src/protocol.rs");
+
+    for script in ["js/titlebar.js", "js/controls.js", "js/linux-controls.js"] {
+        assert!(
+            frontend.contains(&format!("include_str!(\"{script}\")")),
+            "frontend runtime does not embed {script}"
+        );
+    }
+    assert!(protocol.contains("include_bytes!(\"css/controls.css\")"));
+}
+
+#[test]
+fn plugin_acl_exposes_only_document_acknowledgement() {
+    let build = read("build.rs");
+    let permission = read("permissions/default.toml");
+
+    assert!(build.contains("const COMMANDS: &[&str] = &[\"frontend_ack\"]"));
+    assert!(permission.contains("permissions = [\"allow-frontend-ack\"]"));
+    for removed in [
+        "frontend_fallback",
+        "linux_options",
+        "frontend-fallback",
+        "linux-options",
+    ] {
+        assert!(!build.contains(removed));
+        assert!(!permission.contains(removed));
+    }
+}
+
+#[test]
+fn example_is_one_hidden_main_window_with_least_privilege() {
+    let config: serde_json::Value =
+        serde_json::from_str(&read("examples/tauri-app/src-tauri/tauri.conf.json"))
+            .expect("example config must be valid JSON");
+    let windows = config["app"]["windows"]
+        .as_array()
+        .expect("example windows must be an array");
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0]["label"], "main");
+    assert_eq!(windows[0]["visible"], false);
+    assert_eq!(windows[0]["decorations"], true);
+    assert!(config["app"]["security"]["csp"]["style-src-elem"]
+        .as_str()
+        .is_some_and(|csp| csp.contains("tauri-plugin-decoration:")));
+
+    let capability: serde_json::Value = serde_json::from_str(&read(
+        "examples/tauri-app/src-tauri/capabilities/default.json",
+    ))
+    .expect("example capability must be valid JSON");
+    assert_eq!(capability["windows"], serde_json::json!(["main"]));
+    assert_eq!(
+        capability["permissions"],
+        serde_json::json!([
+            "core:window:allow-close",
+            "core:window:allow-is-fullscreen",
+            "core:window:allow-is-maximized",
+            "core:window:allow-minimize",
+            "core:window:allow-show",
+            "core:window:allow-start-dragging",
+            "core:window:allow-internal-toggle-maximize",
+            "core:window:allow-toggle-maximize",
+            "decoration:default"
+        ])
+    );
+}
+
+#[test]
+fn example_activates_after_mount_and_restores_before_showing_fallback() {
+    let rust = read("examples/tauri-app/src-tauri/src/main.rs");
+    let frontend = read("examples/tauri-app/src/App.tsx");
+
+    assert_eq!(rust.matches("#[tauri::command]").count(), 2);
+    assert!(rust.contains("fn activate_custom_titlebar"));
+    assert!(rust.contains("fn show_native_fallback"));
+    let fallback = rust
+        .split("fn show_native_fallback")
+        .nth(1)
+        .expect("missing fallback command");
+    assert!(fallback.find("restore_native_titlebar").unwrap() < fallback.find(".show()").unwrap());
+
+    assert!(frontend.contains("invoke(\"activate_custom_titlebar\")"));
+    assert!(frontend.contains("[data-tauri-plugin-decoration-active]"));
+    assert!(frontend.contains("DECORATION_FALLBACK_MS = 5000"));
+    assert!(frontend.contains("invoke(\"show_native_fallback\")"));
+    assert!(frontend.contains("data-tauri-drag-region"));
+}
+
+#[test]
+fn example_titlebar_preserves_drag_hit_testing_and_fullscreen_clearance() {
+    let styles = read("examples/tauri-app/src/styles.css");
+    let titlebar = styles
+        .split(".titlebar-content {")
+        .nth(1)
+        .and_then(|css| css.split('}').next())
+        .expect("missing titlebar-content rule");
+
+    for declaration in [
+        "pointer-events: none",
+        "cursor: default",
+        "user-select: none",
+        "--tauri-plugin-decoration-left-clearance",
+        "--tauri-plugin-decoration-right-clearance",
+    ] {
+        assert!(
+            titlebar.contains(declaration),
+            "titlebar rule is missing {declaration}"
+        );
+    }
+}
+
+#[test]
+fn macos_uses_typed_objc2_and_opt_in_private_transparency() {
+    let manifest = read("Cargo.toml");
+    let macos = cargo_section(
+        &manifest,
+        "target.'cfg(target_os = \"macos\")'.dependencies",
+    );
+    let traffic = read("src/traffic.rs");
+    let state = read("src/traffic_state.rs");
+
+    for typed in ["objc2 =", "objc2-app-kit =", "objc2-foundation ="] {
+        assert!(macos.contains(typed), "missing {typed}");
+    }
+    for obsolete in ["cocoa =", "objc =", "objc2-web-kit =", "rand ="] {
+        assert!(!macos.contains(obsolete), "obsolete dependency {obsolete}");
+    }
+    assert!(!traffic.contains("setDelegate"));
+    assert!(!traffic.contains("with_webview"));
+    assert!(traffic.contains("#[cfg(feature = \"macos-transparency\")]"));
+    assert!(traffic.contains("set_background_color"));
+    assert!(traffic.contains("appkit("));
+    assert!(state.contains("Generation"));
+    assert!(!state.contains("ListenerToken"));
+}
+
+#[test]
+fn linux_uses_wayland_gtk_without_runtime_fallback_protocol() {
+    let manifest = read("Cargo.toml");
+    let dependencies = cargo_section(
+        &manifest,
+        "target.'cfg(target_os = \"linux\")'.dependencies",
+    );
+    let native = read("src/linux.rs");
+    let frontend = read("src/js/linux-controls.js");
+
+    for dependency in [
+        "base64 = \"=0.22.1\"",
+        "gtk = { version = \"=0.18.2\", features = [\"v3_24\"] }",
+    ] {
+        assert!(dependencies.contains(dependency), "missing {dependency}");
+    }
+    assert!(!dependencies.contains("gdk-pixbuf"));
+    assert!(native.contains("GdkWaylandDisplay"));
+    assert!(!native.contains("XDG_SESSION_TYPE"));
+    assert!(!native.contains("std::process::Command"));
+    assert!(!root().join("src/dconf.rs").exists());
+    assert!(!frontend.contains("frontend_fallback"));
+    assert!(!frontend.contains("linux_options"));
+    assert!(frontend.contains("console.error"));
+}
+
+#[test]
+fn windows_overlay_rejects_duplicates_and_contains_callback_panics() {
+    let snap = read("src/snap.rs");
+    let state = read("src/snap_state.rs");
+
+    assert!(snap.contains("WM_NCDESTROY"));
+    assert!(!snap.contains("WM_CLOSE"));
+    assert!(snap.matches("catch_unwind").count() >= 2);
+    assert!(snap.contains("SW_HIDE"));
+    assert!(state.contains("a snap overlay is already installed for this window"));
+    assert!(!snap.contains("registry.restore(old)"));
+}
+
+#[test]
+fn ci_and_release_keep_the_essential_supply_chain_controls() {
+    let ci = read(".github/workflows/ci.yml");
+    let release = read(".github/workflows/release.yml");
+    let verifier = read(".github/scripts/verify-release.sh");
+
+    for required in [
+        "workflow_call:",
+        "ubuntu-24.04",
+        "windows-2022",
+        "macos-15",
+        "cargo +1.88.0 test --locked --all-features",
+        "tests/compatibility/tauri-2.9/Cargo.toml",
+        "cargo +stable update -p tauri",
+        "pnpm install --frozen-lockfile",
+        "cargo +1.88.0 publish --dry-run --locked",
+        "persist-credentials: false",
+    ] {
+        assert!(ci.contains(required), "CI is missing {required}");
+    }
+
+    for required in [
+        "uses: ./.github/workflows/ci.yml",
+        "bash .github/scripts/verify-release.sh",
+        "environment: release",
+        "id-token: write",
+        "rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18",
+        "cargo +1.88.0 publish --locked",
+        "gh release create",
+        "--verify-tag",
+    ] {
+        assert!(release.contains(required), "release is missing {required}");
+    }
+    assert!(!release.contains("workflow_dispatch:"));
+    assert!(!release.contains("inputs.tag"));
+    assert!(!release.contains("publish-or-verify"));
+    assert!(!release.contains("create-or-reconcile"));
+    assert!(!release.contains("CARGO_REGISTRY_TOKEN: ${{ secrets."));
+
+    for workflow in [&ci, &release] {
+        for line in workflow.lines().map(str::trim) {
+            let Some(reference) = line.strip_prefix("uses: ") else {
+                continue;
+            };
+            if reference.starts_with("./") {
+                continue;
+            }
+            let sha = reference
+                .split('@')
+                .nth(1)
+                .and_then(|value| value.split_whitespace().next())
+                .expect("external action must have a ref");
+            assert_eq!(sha.len(), 40, "action is not pinned to a full SHA: {line}");
+            assert!(
+                sha.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                "action ref is not a SHA: {line}"
+            );
+        }
+    }
+
+    for required in [
+        "git show-ref --verify",
+        "git rev-parse HEAD",
+        "cargo metadata --locked --no-deps --format-version 1",
+        "release tag does not match Cargo package version",
+    ] {
+        assert!(
+            verifier.contains(required),
+            "verifier is missing {required}"
+        );
+    }
+}
+
+#[test]
+fn release_shell_test_is_unix_only_and_uses_generic_versions() {
+    let test = read("tests/release_verifier.rs");
+    assert!(test.starts_with("#![cfg(unix)]"));
+    assert!(!test.contains("2.0.3"));
+    assert!(!root().join("tests/publish_verifier.rs").exists());
+    assert!(!root().join("tests/github_release.rs").exists());
+}
+
+#[test]
+fn public_docs_match_the_v2_surface_and_tauri_2_9_boundary() {
+    let readme = read("README.md");
+
+    for required in [
+        "tauri-plugin-decoration = \"2.1.0\"",
+        "applications do not install a companion npm package",
+        "data-tauri-plugin-decoration-active",
+        "macos-transparency",
+        "Ubuntu 24.04 LTS",
+        "GNOME/Mutter",
+        "KDE/KWin",
+        "Fedora 44",
+        "JavaScript and CSS are embedded in the Rust crate",
+        "GTK 3.24 or newer",
+        "WebKitGTK 4.1 version 2.40 or newer",
+        "GdkWaylandDisplay",
+        "Tauri 2.9.0 or a later compatible Tauri v2 release",
+        "Rust 1.88",
+    ] {
+        assert!(readme.contains(required), "README is missing {required}");
+    }
+    assert!(!readme.contains("data-tauri-plugin-decoration-status"));
+    assert!(!readme.contains("X11"));
+    let readme_lowercase = readme.to_ascii_lowercase();
+    for forbidden in [
+        "best-effort",
+        "best effort",
+        "low-priority",
+        "low priority",
+        "release gate",
+        "release-gate",
+        "bugs are accepted",
+        "tauri 2.10.2",
+        "objc2 migration",
+        "forward canary",
+    ] {
+        assert!(
+            !readme_lowercase.contains(forbidden),
+            "README contains internal detail: {forbidden}"
+        );
+    }
+    for removed in ["docs/linux-support.md", "docs/compatibility/tauri-2x.md"] {
+        assert!(
+            !root().join(removed).exists(),
+            "stale user documentation: {removed}"
+        );
+    }
+}

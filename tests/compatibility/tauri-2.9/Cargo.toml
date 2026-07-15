@@ -1,0 +1,24 @@
+[package]
+name = "tauri-decoration-compat-2-9"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "=2.5.0", default-features = false, features = [] }
+tauri-plugin = { version = "=2.5.2", features = ["build"] }
+
+[dependencies]
+tauri = { version = "=2.9.0", default-features = false, features = ["wry"] }
+tauri-plugin-decoration = { path = "../../..", features = ["macos-transparency"] }
+
+# Tauri publishes its core crates independently. These exact constraints retain
+# the selected Tauri 2.9.0 macro/codegen/runtime boundary and keep the optional
+# plugin feature on the supported dependency floor.
+tauri-codegen = "=2.5.0"
+tauri-macros = "=2.5.0"
+tauri-runtime = "=2.9.0"
+tauri-runtime-wry = { version = "=2.9.0", default-features = false }
+tauri-utils = "=2.8.1"
+wry = "=0.53.4"
