@@ -9,8 +9,10 @@ package-lock.json
 
 /.tauri
 /target
-Cargo.lock
 node_modules/
+/.pnpm-store/
+/tests/compatibility/*/gen/
+/tests/compatibility/*/target/
+/examples/tauri-app/src-tauri/gen/
 
-dist-js
 dist

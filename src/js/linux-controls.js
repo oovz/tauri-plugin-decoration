@@ -1,177 +1,172 @@
-/**
- * @param {string} selector
- * @returns {Promise<HTMLElement>}
- */
-function waitForElm(selector) {
-  return new Promise((resolve) => {
-    if (document.querySelector(selector)) {
-      return resolve(document.querySelector(selector));
-    }
-
-    const observer = new MutationObserver((mutations) => {
-      if (document.querySelector(selector)) {
-        observer.disconnect();
-        resolve(document.querySelector(selector));
-      }
-    });
-
-    // If you get "parameter 1 is not of type 'Node'" error, see https://stackoverflow.com/a/77855838/492336
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  });
-}
-
 (() => {
-  const setup = () => {
-  // All of this tags will be replaced by the found system theme icons
-  const windowCloseSvg = `@win-close`;
-  const windowMinimizeSvg = `@win-minimize`;
-  const windowMaximizeSvg = `@win-maximize`;
-  const windowRestoreSvg = `@win-restore`;
+  "use strict";
 
-  const tauri = window.__TAURI__;
+  const runtime = window.__TAURI_PLUGIN_DECORATION__;
+  if (!runtime) return;
 
-  if (!tauri) {
-    console.log("DECORATION: Tauri API not found. Exiting.");
-    console.log(
-      "DECORATION: Set withGlobalTauri: true in tauri.conf.json to enable.",
-    );
-    return;
-  }
-
-  const win = tauri.window.getCurrentWindow();
-
-  console.log("DECORATION: Waiting for [data-tauri-decoration-tb] ...");
-
-  const ensureControlHost = () => {
-    let controlsEl = document.querySelector("[data-tauri-decoration-controls]");
-    if (controlsEl) return controlsEl;
-
-    controlsEl = document.createElement("div");
-    controlsEl.setAttribute("data-tauri-decoration-controls", "");
-    controlsEl.setAttribute("role", "group");
-    controlsEl.setAttribute("lang", "en");
-    controlsEl.setAttribute("aria-label", "Window controls");
-    controlsEl.style.top = "0";
-    controlsEl.style.right = "0";
-    controlsEl.style.zIndex = "300";
-    controlsEl.style.height = "32px";
-    controlsEl.style.display = "flex";
-    controlsEl.style.position = "fixed";
-    controlsEl.style.alignItems = "center";
-    controlsEl.style.justifyContent = "end";
-    controlsEl.style.backgroundColor = "transparent";
-    document.body.appendChild(controlsEl);
-    return controlsEl;
-  };
-
-  waitForElm("[data-tauri-decoration-tb]").then((tbEl) => {
-    const controlsEl = ensureControlHost();
-    if (controlsEl.querySelector("[id^='decoration-tb-']")) {
-      console.log("DECORATION: Controls already exist. Skipping creation.");
-      return;
+  runtime.registerPlatform("linux", async (context) => {
+    const tauriWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+    if (!tauriWindow) throw new Error("Tauri window API unavailable");
+    if (typeof tauriWindow.isFullscreen !== "function") {
+      throw new Error("Tauri fullscreen-state API unavailable");
     }
 
-    const actions = document.createElement("div");
-    actions.className = "decoration-tb-actions";
-    actions.style.width = "fit-content";
-    actions.style.display = "flex";
-    actions.style.paddingRight = "0.5em";
-    actions.style.gap = "0.8125em";
+    const pngDataUrl = (value) =>
+      typeof value === "string" &&
+      /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(value)
+        ? value
+        : null;
+    const config = context.config;
+    let maximize = null;
+    let maximized = false;
+    let fullscreen = false;
+    let windowStateSequence = 0;
 
-    // Create button func
-    const createButton = (id) => {
-      console.debug("createButton", id);
-      const btn = document.createElement("button");
-      btn.id = "decoration-tb-" + id;
-      btn.classList.add("decoration-tb-btn");
-
-      switch (id) {
-        case "minimize":
-          btn.innerHTML = windowMinimizeSvg;
-
-          btn.addEventListener("click", () => {
-            win.minimize();
-          });
-
-          break;
-        case "maximize":
-          btn.innerHTML = windowMaximizeSvg;
-          win.onResized(() => {
-            win.isMaximized().then((maximized) => {
-              if (maximized) {
-                btn.innerHTML = windowRestoreSvg;
-              } else {
-                btn.innerHTML = windowMaximizeSvg;
-              }
-            });
-          });
-
-          btn.addEventListener("click", () => {
-            btn.blur();
-            win.toggleMaximize();
-          });
-
-          break;
-        case "close":
-          btn.innerHTML = windowCloseSvg;
-          btn.addEventListener("click", () => win.close());
-          break;
-      }
-
-      actions.appendChild(btn);
+    const createHost = (side) => {
+      const host = document.createElement("div");
+      host.setAttribute("data-tauri-decoration-controls", "");
+      host.setAttribute("data-tauri-decoration-platform", "linux");
+      host.setAttribute("data-tauri-decoration-side", side);
+      host.setAttribute("role", "group");
+      host.setAttribute("aria-label", "Window controls");
+      context.root.appendChild(host);
+      return host;
     };
 
-    // Before eval-ing, the line below is modified from the rust side
-    // to only include the controls that are enabled on the window
-    ["minimize", "maximize", "close"].forEach(createButton);
+    const createButton = (host, name, label, action) => {
+      const state = { actionLocked: false };
+      const button = document.createElement("button");
+      button.setAttribute("type", "button");
+      button.setAttribute("data-tauri-decoration-control", name);
+      button.setAttribute("data-tauri-decoration-icon", name);
+      button.setAttribute("aria-label", label);
+      const image = document.createElement("img");
+      image.setAttribute("alt", "");
+      image.setAttribute("aria-hidden", "true");
+      const source = pngDataUrl(config.icons[name]);
+      if (source) image.setAttribute("src", source);
+      else button.setAttribute("data-tauri-decoration-icon-fallback", "");
+      image.addEventListener("error", () => {
+        if (!context.isCurrent()) return;
+        image.removeAttribute("src");
+        button.setAttribute("data-tauri-decoration-icon-fallback", "");
+      });
+      button.appendChild(image);
 
-    controlsEl.appendChild(actions);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (state.actionLocked || !context.isCurrent()) {
+          return;
+        }
+        state.actionLocked = true;
+        Promise.resolve()
+          .then(action)
+          .catch((error) => {
+            console.error(
+              `tauri-plugin-decoration: Linux ${name} action failed`,
+              error,
+            );
+          })
+          .finally(() => {
+            state.actionLocked = false;
+          });
+      });
+      host.appendChild(button);
+      return { button, image };
+    };
 
-    const style = document.createElement("style");
-    document.head.appendChild(style);
-
-    style.innerHTML = `
-			.decoration-tb-btn {
-        color: white;
-				cursor: default;
-				border: none;
-				padding: 0px;
-      	width: 1.5em;
-				height: 1.5em;
-				outline: none;
-				display: flex;
-				box-shadow: none;
-				align-items: center;
-				justify-content: center;
-				transition: background 0.1s;
-      	border-radius: 50%;
-				background-color: var(--decoration-tb-actions-icon-bg, rgba(255, 255, 255, 0.2));
-			}
-
-      .decoration-tb-btn:hover {
-        background-color: var(--decoration-tb-actions-icon-active-bg, rgba(255, 255, 255, 0.4));
+    const renderMaximized = (maximized) => {
+      if (!maximize) return;
+      const icon = maximized ? "restore" : "maximize";
+      const source = pngDataUrl(config.icons[icon]);
+      maximize.button.setAttribute("data-tauri-decoration-icon", icon);
+      maximize.button.setAttribute(
+        "aria-label",
+        maximized ? "Restore window size" : "Maximize window size",
+      );
+      if (source) {
+        maximize.image.setAttribute("src", source);
+        maximize.button.removeAttribute("data-tauri-decoration-icon-fallback");
+      } else {
+        maximize.image.removeAttribute("src");
+        maximize.button.setAttribute("data-tauri-decoration-icon-fallback", "");
       }
+    };
 
-      .decoration-tb-btn svg {
-      	width: 16px;
-				height: 16px;
-      }
+    const clearance = (side) => {
+      const count = config.layout[side].length;
+      return count === 0 ? 0 : count * 32 + (count - 1) * 6 + 16;
+    };
 
-      .decoration-tb-btn svg path {
-        fill: var(--decoration-tb-actions-icon-fg, #ffffff);
+    const publishClearances = () => {
+      context.setClearance("left", fullscreen ? 0 : clearance("left"));
+      context.setClearance("right", fullscreen ? 0 : clearance("right"));
+    };
+
+    const renderFullscreen = (value) => {
+      fullscreen = Boolean(value);
+      if (fullscreen) {
+        context.root.setAttribute("data-tauri-decoration-fullscreen", "");
+      } else {
+        context.root.removeAttribute("data-tauri-decoration-fullscreen");
       }
-		`;
+      publishClearances();
+    };
+
+    const actions = {
+      minimize: (host) =>
+        createButton(host, "minimize", "Minimize window", () =>
+          tauriWindow.minimize(),
+        ),
+      maximize: (host) => {
+        maximize = createButton(host, "maximize", "Maximize window size", () =>
+          tauriWindow.toggleMaximize(),
+        );
+      },
+      close: (host) =>
+        createButton(host, "close", "Close window", () => tauriWindow.close()),
+    };
+    for (const side of ["left", "right"]) {
+      if (config.layout[side].length === 0) continue;
+      const host = createHost(side);
+      for (const control of config.layout[side]) actions[control](host);
+    }
+    renderMaximized(maximized);
+    publishClearances();
+
+    const refreshWindowState = async () => {
+      const sequence = ++windowStateSequence;
+      const [nextMaximized, nextFullscreen] = await Promise.all([
+        maximize ? tauriWindow.isMaximized() : false,
+        tauriWindow.isFullscreen(),
+      ]);
+      if (context.isCurrent() && sequence === windowStateSequence) {
+        maximized = Boolean(nextMaximized);
+        renderMaximized(maximized);
+        renderFullscreen(nextFullscreen);
+      }
+    };
+
+    const reportRefreshFailure = (error) => {
+      console.error(
+        "tauri-plugin-decoration: Linux window-state refresh failed",
+        error,
+      );
+    };
+
+    await refreshWindowState();
+
+    const onResize = () => {
+      void refreshWindowState().catch((error) => {
+        reportRefreshFailure(error);
+      });
+    };
+    window.addEventListener("resize", onResize);
+    context.addDisposer(() => {
+      windowStateSequence += 1;
+      window.removeEventListener("resize", onResize);
+    });
+
+    return {};
   });
-  };
-
-  // Fix for #50/#32: scripts may be injected after DOMContentLoaded
-  // has already fired, so check readyState instead of always waiting.
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", setup);
-  } else {
-    setup();
-  }
 })();

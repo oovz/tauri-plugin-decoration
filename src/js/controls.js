@@ -1,291 +1,191 @@
-function waitForElm(selector) {
-	return new Promise((resolve) => {
-		if (document.querySelector(selector)) {
-			return resolve(document.querySelector(selector));
-		}
-
-		const observer = new MutationObserver((mutations) => {
-			if (document.querySelector(selector)) {
-				observer.disconnect();
-				resolve(document.querySelector(selector));
-			}
-		});
-
-		// If you get "parameter 1 is not of type 'Node'" error, see https://stackoverflow.com/a/77855838/492336
-		observer.observe(document.body, {
-			childList: true,
-			subtree: true,
-		});
-	});
-}
-
 (() => {
-	const setup = () => {
-		const tauri = window.__TAURI__;
+  "use strict";
 
-		if (!tauri) {
-			console.log("DECORATION: Tauri API not found. Exiting.");
-			console.log(
-				"DECORATION: Set withGlobalTauri: true in tauri.conf.json to enable.",
-			);
-			return;
-		}
+  const runtime = window.__TAURI_PLUGIN_DECORATION__;
+  if (!runtime) return;
 
-		const win = tauri.window.getCurrentWindow();
+  runtime.registerPlatform("windows", async (context) => {
+    const tauriWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+    if (!tauriWindow) throw new Error("Tauri window API unavailable");
 
-		console.log("DECORATION: Waiting for [data-tauri-decoration-tb] ...");
+    const controls = new Set(
+      Array.isArray(context.config.controls) ? context.config.controls : [],
+    );
+    const host = document.createElement("div");
+    host.setAttribute("data-tauri-decoration-controls", "");
+    host.setAttribute("data-tauri-decoration-platform", "windows");
+    host.setAttribute("role", "group");
+    host.setAttribute("aria-label", "Window controls");
+    context.root.appendChild(host);
 
-		// Add debounce function
-		const debounce = (func, delay) => {
-			let timeoutId;
-			return (...args) => {
-				clearTimeout(timeoutId);
-				timeoutId = setTimeout(() => func(...args), delay);
-			};
-		};
+    const buttons = new Map();
+    let activeControl = null;
+    let refreshSequence = 0;
 
-		// Dark/light mode aware hover colors (fixes #39)
-		const BUTTON_HOVER_BG_LIGHT = "rgba(0,0,0,0.1)";
-		const BUTTON_HOVER_BG_DARK = "rgba(255,255,255,0.1)";
-		const BUTTON_FG_LIGHT = "#202020";
-		const BUTTON_FG_DARK = "#f5f5f5";
-		const CLOSE_HOVER_BG = "rgba(255,0,0,0.7)";
-		const CLOSE_HOVER_FG = "#ffffff";
+    const setActive = (control) => {
+      activeControl = buttons.has(control) ? control : null;
+      for (const [name, button] of buttons) {
+        if (name === activeControl) {
+          button.setAttribute("data-tauri-decoration-hover", "");
+        } else {
+          button.removeAttribute("data-tauri-decoration-hover");
+        }
+      }
+    };
 
-		const getButtonHoverBg = () =>
-			window.matchMedia("(prefers-color-scheme: dark)").matches
-				? BUTTON_HOVER_BG_DARK
-				: BUTTON_HOVER_BG_LIGHT;
+    const createButton = (name, label, glyph, action) => {
+      const button = document.createElement("button");
+      button.setAttribute("type", "button");
+      button.setAttribute("data-tauri-decoration-control", name);
+      button.setAttribute("aria-label", label);
+      button.textContent = glyph;
 
-		const getButtonFg = () =>
-			window.matchMedia("(prefers-color-scheme: dark)").matches
-				? BUTTON_FG_DARK
-				: BUTTON_FG_LIGHT;
+      let actionLocked = false;
+      const run = async () => {
+        if (actionLocked || !context.isCurrent()) return;
+        actionLocked = true;
+        setActive(null);
+        try {
+          await action();
+        } catch (error) {
+          console.error(
+            `tauri-plugin-decoration: Windows ${name} action failed`,
+            error,
+          );
+        } finally {
+          actionLocked = false;
+        }
+      };
+      button.addEventListener("mouseenter", () => setActive(name));
+      button.addEventListener("mouseleave", () => {
+        if (activeControl === name) setActive(null);
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        void run();
+      });
+      buttons.set(name, button);
+      host.appendChild(button);
+      return { button, run };
+    };
 
-		const ensureControlHost = () => {
-			let controlsEl = document.querySelector("[data-tauri-decoration-controls]");
-			if (controlsEl) return controlsEl;
+    if (controls.has("minimize")) {
+      createButton("minimize", "Minimize window", "\uE921", () =>
+        tauriWindow.minimize(),
+      );
+    }
 
-			controlsEl = document.createElement("div");
-			controlsEl.setAttribute("data-tauri-decoration-controls", "");
-			controlsEl.setAttribute("role", "group");
-			controlsEl.setAttribute("lang", "en");
-			controlsEl.setAttribute("aria-label", "Window controls");
-			controlsEl.style.top = "0";
-			controlsEl.style.right = "0";
-			controlsEl.style.zIndex = "300";
-			controlsEl.style.height = "32px";
-			controlsEl.style.display = "flex";
-			controlsEl.style.position = "fixed";
-			controlsEl.style.alignItems = "center";
-			controlsEl.style.justifyContent = "end";
-			controlsEl.style.backgroundColor = "transparent";
-			document.body.appendChild(controlsEl);
-			return controlsEl;
-		};
+    let maximize = null;
+    if (controls.has("maximize")) {
+      maximize = createButton("maximize", "Maximize window size", "\uE922", () =>
+        tauriWindow.toggleMaximize(),
+      );
+    }
 
-		// Track active control for hover rendering
-		let activeControl = null;
-		const buttons = new Map();
+    if (controls.has("close")) {
+      createButton("close", "Close window", "\uE8BB", () => tauriWindow.close());
+    }
+    context.setClearance("left", 0);
+    context.setClearance("right", buttons.size * 58);
 
-		const renderHover = () => {
-			const hoverBg = getButtonHoverBg();
-			const fg = getButtonFg();
-			buttons.forEach(({ button, isClose }, control) => {
-				const active = control === activeControl;
-				button.style.backgroundColor = active
-					? isClose
-						? CLOSE_HOVER_BG
-						: hoverBg
-					: "transparent";
-				button.style.color = active && isClose ? CLOSE_HOVER_FG : fg;
-			});
-		};
+    const renderMaximized = (maximized) => {
+      if (!maximize) return;
+      const glyph = maximized ? "\uE923" : "\uE922";
+      maximize.button.textContent = glyph;
+      maximize.button.setAttribute(
+        "aria-label",
+        maximized ? "Restore window size" : "Maximize window size",
+      );
+    };
 
-		const setActiveControl = (control) => {
-			activeControl = control;
-			renderHover();
-		};
+    const renderFullscreen = (fullscreen) => {
+      if (fullscreen) {
+        context.root.setAttribute("data-tauri-decoration-fullscreen", "");
+        setActive(null);
+        context.setClearance("right", 0);
+      } else {
+        context.root.removeAttribute("data-tauri-decoration-fullscreen");
+        context.setClearance("right", buttons.size * 58);
+      }
+    };
 
-		// Hit-test using elementFromPoint to determine which button is hovered.
-		// Called from the native snap overlay's mousemove event so that hover
-		// states stay in sync when the invisible Win32 child HWND intercepts
-		// pointer events over the maximize button.
-		const hitTestControls = (x, y) => {
-			const element = document.elementFromPoint(x, y);
-			const button = element?.closest?.("[id^='decoration-tb-']");
-			setActiveControl(
-				button ? button.id.slice("decoration-tb-".length) : null,
-			);
-		};
+    const refreshWindowState = async () => {
+      const sequence = ++refreshSequence;
+      const [maximized, fullscreen] = await Promise.all([
+        maximize ? tauriWindow.isMaximized() : false,
+        tauriWindow.isFullscreen(),
+      ]);
+      if (context.isCurrent() && sequence === refreshSequence) {
+        renderMaximized(Boolean(maximized));
+        renderFullscreen(Boolean(fullscreen));
+      }
+    };
 
-		// Re-render hover when color scheme changes
-		window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-			renderHover();
-		});
+    await refreshWindowState();
+    const onResize = () => {
+      void refreshWindowState().catch((error) => {
+        console.error(
+          "tauri-plugin-decoration: Windows window-state refresh failed",
+          error,
+        );
+      });
+    };
+    window.addEventListener("resize", onResize);
+    context.addDisposer(() => {
+      refreshSequence += 1;
+      window.removeEventListener("resize", onResize);
+    });
 
-		// Create button func
-		const createButton = (id) => {
-			const btn = document.createElement("button");
+    const hitTest = (payload) => {
+      if (
+        !Array.isArray(payload) ||
+        payload.length !== 2 ||
+        !payload.every((coordinate) => Number.isFinite(coordinate))
+      ) {
+        return false;
+      }
+      const devicePixelRatio =
+        Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
+          ? window.devicePixelRatio
+          : 1;
+      const element = document.elementFromPoint(
+        payload[0] / devicePixelRatio,
+        payload[1] / devicePixelRatio,
+      );
+      const button = element?.closest?.("[data-tauri-decoration-control]");
+      setActive(button?.getAttribute("data-tauri-decoration-control") ?? null);
+      return true;
+    };
 
-			btn.id = "decoration-tb-" + id;
-			btn.style.width = "58px";
-			btn.style.height = "32px";
-			btn.style.border = "none";
-			btn.style.padding = "0px";
-			btn.style.outline = "none";
-			btn.style.display = "flex";
-			btn.style.fontSize = "10px";
-			btn.style.fontWeight = "300";
-			btn.style.cursor = "default";
-			btn.style.boxShadow = "none";
-			btn.style.borderRadius = "0px";
-			btn.style.alignItems = "center";
-			btn.style.justifyContent = "center";
-			btn.style.transition = "background 0.1s";
-			btn.style.backgroundColor = "transparent";
-			btn.style.textRendering = "optimizeLegibility";
-			btn.style.fontFamily = "'Segoe Fluent Icons', 'Segoe MDL2 Assets'";
-			btn.style.color = getButtonFg();
-
-			const isClose = id === "close";
-
-			const setHover = (hovered) => {
-				if (hovered) {
-					setActiveControl(id);
-				} else if (activeControl === id) {
-					setActiveControl(null);
-				}
-			};
-
-			const state = {
-				actionLock: false,
-				lastAction: 0,
-			};
-
-			const tryAction = (action) => {
-				const now = Date.now();
-				if (state.actionLock || now - state.lastAction < 200) return;
-				state.actionLock = true;
-				state.lastAction = now;
-				setHover(false);
-				Promise.resolve(action()).finally(() => {
-					setTimeout(() => { state.actionLock = false; }, 100);
-				});
-			};
-
-			buttons.set(id, { button: btn, isClose });
-
-			btn.onmouseenter = () => setHover(true);
-			btn.onmouseleave = () => setHover(false);
-
-			switch (id) {
-				case "minimize":
-					btn.innerHTML = "\uE921";
-					btn.setAttribute("aria-label", "Minimize window");
-					btn.onclick = (e) => {
-						e.preventDefault();
-						tryAction(() => win.minimize());
-					};
-					break;
-				case "maximize":
-					btn.innerHTML = "\uE922";
-					btn.setAttribute("aria-label", "Maximize window");
-
-					const toggleMaximize = (e) => {
-						if (e) e.preventDefault();
-						tryAction(() => win.toggleMaximize());
-					};
-					btn.onclick = toggleMaximize;
-
-					// Listen for native snap overlay events emitted by the
-					// Rust snap module's child HWND.  These keep hover state
-					// in sync and forward clicks so that the native Windows
-					// 11 Snap Layout flyout works without keyboard simulation.
-					win.listen("decoration://snap/mousemove", ({ payload }) => {
-						if (Array.isArray(payload)) hitTestControls(payload[0], payload[1]);
-					});
-					win.listen("decoration://snap/mouseenter", () => setHover(true));
-					win.listen("decoration://snap/mouseleave", () => setHover(false));
-					win.listen("decoration://snap/mousedown", () => setHover(true));
-					win.listen("decoration://snap/mouseup", () => setHover(true));
-					win.listen("decoration://snap/click", () => toggleMaximize());
-
-					win.onResized(() => {
-						win.isMaximized().then((maximized) => {
-							if (maximized) {
-								btn.innerHTML = "\uE923";
-								btn.setAttribute("aria-label", "Restore window size");
-							} else {
-								btn.innerHTML = "\uE922";
-								btn.setAttribute("aria-label", "Maximize window size");
-							}
-						});
-					});
-					break;
-				case "close":
-					btn.innerHTML = "\uE8BB";
-					btn.setAttribute("aria-label", "Close window");
-					btn.onclick = () => win.close();
-					break;
-			}
-
-			return btn;
-		};
-
-		// Debounce the control creation
-		const debouncedCreateControls = debounce(() => {
-			const tbEl = document.querySelector("[data-tauri-decoration-tb]");
-			if (!tbEl) return;
-			const controlsEl = ensureControlHost();
-
-			// Check if controls already exist
-			if (controlsEl.querySelector("[id^='decoration-tb-']")) {
-				console.log("DECORATION: Controls already exist. Skipping creation.");
-				return;
-			}
-
-			// Before eval-ing, the line below is modified from the rust side
-			// to only include the controls that are enabled on the window
-			["minimize", "maximize", "close"].forEach((id) => {
-				const btn = createButton(id);
-				controlsEl.appendChild(btn);
-			});
-			renderHover();
-		});
-
-		// Use MutationObserver to watch for changes
-		const observer = new MutationObserver((mutations) => {
-			for (let mutation of mutations) {
-				if (mutation.type === "childList") {
-					const tbEl = document.querySelector("[data-tauri-decoration-tb]");
-					if (tbEl) {
-						debouncedCreateControls();
-						break;
-					}
-				}
-			}
-		});
-
-		// data-tauri-decoration-tb may be created before observer starts
-		if (document.querySelector("[data-tauri-decoration-tb]")) {
-			debouncedCreateControls();
-			return;
-		}
-
-		observer.observe(document.body, {
-			childList: true,
-			subtree: true,
-		});
-
-		debouncedCreateControls();
-	};
-
-	// Fix for #50/#32: scripts may be injected after DOMContentLoaded
-	// has already fired, so check readyState instead of always waiting.
-	if (document.readyState === "loading") {
-		document.addEventListener("DOMContentLoaded", setup);
-	} else {
-		setup();
-	}
+    return {
+      handle(event, payload) {
+        switch (event) {
+          case "snap-mousemove":
+            return hitTest(payload);
+          case "snap-mouseenter":
+          case "snap-mousedown":
+          case "snap-mouseup":
+            setActive("maximize");
+            return Boolean(maximize);
+          case "snap-mouseleave":
+            setActive(null);
+            return Boolean(maximize);
+          case "snap-click":
+            if (!maximize) return false;
+            void maximize.run();
+            return true;
+          case "fullscreen-did-enter":
+            refreshSequence += 1;
+            renderFullscreen(true);
+            return true;
+          case "fullscreen-did-exit":
+            refreshSequence += 1;
+            renderFullscreen(false);
+            return true;
+          default:
+            return false;
+        }
+      },
+    };
+  });
 })();
