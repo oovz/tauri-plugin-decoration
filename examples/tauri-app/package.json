@@ -9,11 +9,13 @@
     "preview": "vite preview",
     "tauri": "tauri"
   },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
   "dependencies": {
     "react": "^19",
     "react-dom": "^19",
-    "@tauri-apps/api": "^2",
-    "tauri-plugin-decoration-api": "workspace:*"
+    "@tauri-apps/api": "2.9.0"
   },
   "devDependencies": {
     "@types/react": "^19",
@@ -21,6 +23,6 @@
     "@vitejs/plugin-react": "^6",
     "typescript": "^5.9",
     "vite": "^8",
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "2.9.0"
   }
 }

@@ -1,20 +1,16 @@
 [package]
 name = "tauri-app"
 version = "0.0.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Single-window example for tauri-plugin-decoration"
+authors = ["oovz"]
+license = "MIT"
+repository = "https://github.com/oovz/tauri-plugin-decoration"
 edition = "2021"
-rust-version = "1.70"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+rust-version = "1.88"
 
 [build-dependencies]
-tauri-build = { version = "2", default-features = false , features = [] }
+tauri-build = { version = "=2.5.0", default-features = false, features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "=2.9.0", default-features = false, features = ["wry"] }
 tauri-plugin-decoration = { path = "../../../" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"

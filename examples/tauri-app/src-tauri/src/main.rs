@@ -1,23 +1,39 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+// Prevents an additional console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Manager;
+use tauri::WebviewWindow;
 use tauri_plugin_decoration::WebviewWindowExt;
 
-fn main() {
+#[tauri::command]
+fn activate_custom_titlebar(window: WebviewWindow) -> Result<(), String> {
+    window
+        .create_overlay_titlebar()
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    window
+        .set_traffic_lights_inset(16.0, 20.0)
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn show_native_fallback(window: WebviewWindow) -> Result<(), String> {
+    window
+        .restore_native_titlebar()
+        .map_err(|error| format!("failed to restore native decorations: {error}"))?;
+    window
+        .show()
+        .map_err(|error| format!("failed to show native fallback: {error}"))
+}
+
+fn main() -> Result<(), tauri::Error> {
     tauri::Builder::default()
         .plugin(tauri_plugin_decoration::init())
-        .setup(|app| {
-            // Create a custom titlebar for main window
-            // On Windows this will hide decoration and render custom window controls
-            // On macOS it expects a hiddenTitle: true and titleBarStyle: overlay
-            let main_window = app.get_webview_window("main").unwrap();
-            main_window.create_overlay_titlebar().unwrap();
-
-            #[cfg(target_os = "macos")]
-            main_window.set_traffic_lights_inset(16.0, 20.0).unwrap();
-            Ok(())
-        })
+        .invoke_handler(tauri::generate_handler![
+            activate_custom_titlebar,
+            show_native_fallback
+        ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }

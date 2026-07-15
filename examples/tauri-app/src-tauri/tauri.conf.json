@@ -11,15 +11,25 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "img-src": "'self' asset: http://asset.localhost data:",
+        "style-src": "'self' tauri-plugin-decoration: http://tauri-plugin-decoration.localhost https://tauri-plugin-decoration.localhost",
+        "style-src-elem": "'self' tauri-plugin-decoration: http://tauri-plugin-decoration.localhost https://tauri-plugin-decoration.localhost"
+      },
+      "devCsp": null
     },
     "windows": [
       {
+        "label": "main",
         "fullscreen": false,
         "resizable": true,
         "title": "Decoration Demo",
         "width": 800,
         "height": 500,
+        "decorations": true,
+        "visible": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }
@@ -37,4 +47,3 @@
     ]
   }
 }
-
