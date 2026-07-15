@@ -2,76 +2,100 @@
 
 [![crates.io](https://img.shields.io/crates/v/tauri-plugin-decoration.svg)](https://crates.io/crates/tauri-plugin-decoration)
 
-Native window controls, custom decorations, and Windows 11 Snap Layout for Tauri v2 apps.
+Native window controls for custom Tauri v2 titlebars.
 
-<video src="assets/windows.mp4" controls muted width="100%"></video>
+| Platform | Controls |
+|---|---|
+| Windows 10 | HTML window controls |
+| Windows 11 | HTML window controls with native Snap Layout |
+| macOS | Native AppKit traffic lights |
+| Linux | GTK-themed HTML controls for supported Wayland sessions |
 
-<video src="assets/mac.mp4" controls muted width="100%"></video>
+The plugin requires Tauri 2.9.0 or a later compatible Tauri v2 release and
+Rust 1.88. Its JavaScript and CSS are embedded in the Rust crate, so
+applications do not install a companion npm package.
 
-## Features
+<video src="https://raw.githubusercontent.com/oovz/tauri-plugin-decoration/main/assets/windows.mp4" controls muted width="100%"></video>
 
-- **Frameless window controls** — custom minimize/maximize/close buttons rendered as HTML, positioned over a transparent draggable titlebar area.
-- **Windows 11 Snap Layout** — a native Win32 child HWND overlay returns `HTMAXBUTTON` from `WM_NCHITTEST`, triggering the OS-built Snap Layout flyout on hover. No keyboard or mouse simulation.
-- **macOS traffic lights** — inset positioning for the native close/minimize/zoom buttons so they align with your app content. Also supports window transparency and window level control.
-- **Linux system icons** — window control buttons use the current icon theme (via `linicon` + `dconf`).
-- **Dark/light aware** — hover colors adapt to the user's color scheme preference.
-- **Late-injection safe** — scripts check `document.readyState` so they work even when injected after `DOMContentLoaded`.
+<video src="https://raw.githubusercontent.com/oovz/tauri-plugin-decoration/main/assets/mac.mp4" controls muted width="100%"></video>
 
-> [!NOTE]
-> Windows 10: the overlay is created and positioned correctly, but the Snap Layout flyout is a Windows 11 feature. On Windows 10, hovering the maximize button still triggers maximize/restore — just no flyout.
+## Quick start
 
-## Usage
-
-### 1. Add the plugin
+Add the plugin and Tauri to your application:
 
 ```toml
-# Cargo.toml
 [dependencies]
-tauri-plugin-decoration = "2"
+tauri = "2.9.0"
+tauri-plugin-decoration = "2.1.0"
 ```
 
-### 2. Initialize in Rust
+Register the plugin before Tauri creates any WebViews, then expose an
+application command for titlebar activation:
 
 ```rust
-use tauri::Manager;
+use tauri::WebviewWindow;
 use tauri_plugin_decoration::WebviewWindowExt;
 
-fn main() {
+#[tauri::command]
+fn activate_custom_titlebar(window: WebviewWindow) -> Result<(), String> {
+    window
+        .create_overlay_titlebar()
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    window
+        .set_traffic_lights_inset(16.0, 20.0)
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+fn main() -> Result<(), tauri::Error> {
     tauri::Builder::default()
         .plugin(tauri_plugin_decoration::init())
-        .setup(|app| {
-            let main_window = app.get_webview_window("main").unwrap();
-            main_window.create_overlay_titlebar().unwrap();
-
-            // macOS-only helpers
-            #[cfg(target_os = "macos")]
-            {
-                // Position the native traffic-light buttons.
-                //   x = horizontal offset from the left edge (direct).
-                //   y = extra titlebar container height; buttons are
-                //       vertically centered within it, so larger y
-                //       pushes the cluster down from the top edge.
-                main_window.set_traffic_lights_inset(12.0, 16.0).unwrap();
-                main_window.make_transparent().unwrap();
-            }
-
-            Ok(())
-        })
+        .invoke_handler(tauri::generate_handler![activate_custom_titlebar])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }
 ```
 
-### 3. Configure window
+Invoke the command after the frontend mounts:
 
-In `tauri.conf.json`, set `withGlobalTauri: true` and use a transparent/overlay titlebar. **Do not set `decorations: false`** — the plugin manages decorations per-platform in `create_overlay_titlebar` (macOS needs `decorations: true` so the native traffic-light buttons exist; Windows/Linux are set to `false` automatically).
+```ts
+import { invoke } from "@tauri-apps/api/core";
+
+await invoke("activate_custom_titlebar");
+```
+
+> [!IMPORTANT]
+> Start opted-in windows hidden and keep native decorations enabled. Wait for
+> `data-tauri-plugin-decoration-active` before showing the window. Bound the
+> wait with an application timeout; if the marker never appears, call
+> `restore_native_titlebar()` before `show()`. The example uses five seconds.
+
+## Tauri configuration
+
+Enable Tauri's global API for the embedded controls and allow the plugin's
+stylesheet protocol in your CSP. Linux theme icons also need `data:` in
+`img-src`.
 
 ```json
 {
   "app": {
     "withGlobalTauri": true,
+    "security": {
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "ipc: http://ipc.localhost",
+        "img-src": "'self' asset: http://asset.localhost data:",
+        "style-src": "'self' tauri-plugin-decoration: http://tauri-plugin-decoration.localhost https://tauri-plugin-decoration.localhost",
+        "style-src-elem": "'self' tauri-plugin-decoration: http://tauri-plugin-decoration.localhost https://tauri-plugin-decoration.localhost"
+      }
+    },
     "windows": [
       {
+        "label": "main",
+        "decorations": true,
+        "visible": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
       }
@@ -80,92 +104,90 @@ In `tauri.conf.json`, set `withGlobalTauri: true` and use a transparent/overlay 
 }
 ```
 
-> [!NOTE]
-> On macOS, `titleBarStyle: "Overlay"` + `hiddenTitle: true` gives the frameless look while keeping the native traffic-light buttons. Setting `decorations: false` on macOS removes the traffic lights entirely — the plugin's `set_traffic_lights_inset` would have nothing to reposition.
+`titleBarStyle` and `hiddenTitle` configure the macOS titlebar. Set window
+flags such as `resizable`, `maximizable`, `minimizable`, and `closable` before
+activation.
 
-### 4. Set permissions
-
-In `src-tauri/capabilities/default.json`:
+The following capability covers all built-in controls and the hidden-window
+reveal flow:
 
 ```json
-"core:window:allow-close",
-"core:window:allow-center",
-"core:window:allow-minimize",
-"core:window:allow-maximize",
-"core:window:allow-set-size",
-"core:window:allow-set-focus",
-"core:window:allow-is-maximized",
-"core:window:allow-start-dragging",
-"core:window:allow-toggle-maximize"
-```
-
-### 5. Style the controls (optional)
-
-The plugin injects buttons with these selectors:
-
-```css
-button#decoration-tb-minimize,
-button#decoration-tb-maximize,
-button#decoration-tb-close,
-div[data-tauri-decoration-tb] {}
-```
-
-### 6. Interactive content in the titlebar area
-
-The plugin creates a fixed-position drag overlay (`div[data-tauri-decoration-tb]`) at `z-index: 100` covering the top 32px of the window. Window control buttons are rendered in a separate fixed layer (`div[data-tauri-decoration-controls]`) at `z-index: 300` so app titlebar content can sit above the drag region without hiding the buttons.
-
-If you need interactive elements in the titlebar area (dropdown menus, navigation tabs, etc.), position your content above the overlay and use `pointer-events` to let clicks fall through to the drag region in empty areas:
-
-```css
-.titlebar-content {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 200;          /* above drag layer, below window controls */
-  height: 32px;
-  pointer-events: none;  /* let clicks fall through to the drag region */
-}
-
-.titlebar-content .interactive-element {
-  pointer-events: auto;  /* re-enable clicks on menus, buttons, etc. */
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "decoration",
+  "windows": ["main"],
+  "permissions": [
+    "core:window:allow-close",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-is-maximized",
+    "core:window:allow-minimize",
+    "core:window:allow-show",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-toggle-maximize",
+    "decoration:default"
+  ]
 }
 ```
 
-### 7. Avoiding overlap with macOS traffic lights (macOS only)
+`decoration:default` permits the plugin's activation acknowledgement. Remove
+window-action permissions only when the corresponding controls are not
+available to the user. Scope the capability to each local, primary WebView by
+window label.
 
-The macOS traffic-light buttons are native OS controls rendered on top of the webview — the plugin cannot move arbitrary app content out of their way automatically (it has no knowledge of your DOM layout). Instead, `set_traffic_lights_inset` exposes the cluster's right edge to the webview as a CSS custom property so your titlebar content can offset itself with a single line of CSS:
+## Titlebar content
+
+Put `data-tauri-drag-region` on the non-interactive part of your application
+titlebar. Keep buttons, links, and inputs outside the drag region.
+
+Use the clearance variables to keep content away from native and HTML window
+controls:
 
 ```css
 .titlebar-content {
-  /* Pushed past the traffic lights on macOS; falls back to 8px
-     on Windows/Linux where the window controls are on the right. */
-  padding-left: var(--decoration-traffic-light-left, 8px);
+  padding-left: max(8px, var(--tauri-plugin-decoration-left-clearance, 0px));
+  padding-right: max(8px, var(--tauri-plugin-decoration-right-clearance, 0px));
+  cursor: default;
+  user-select: none;
 }
 ```
 
-The variable is set on `:root` after `set_traffic_lights_inset(x, y)` runs, and equals `x + (button_count - 1) * 20 + button_width + 8` (a small breathing gap is included). If you never call `set_traffic_lights_inset`, the variable is unset and the fallback applies.
+Both clearances become zero in fullscreen and return when the window leaves
+fullscreen.
 
-## Example App
+## Linux
 
-The repository includes a demo app at [`examples/tauri-app`](examples/tauri-app) showing a custom titlebar with dropdown menus.
+Linux controls are supported on these Wayland sessions:
 
-```sh
-pnpm install
-pnpm example:dev
+- Ubuntu 24.04 LTS with GNOME/Mutter or KDE/KWin
+- Fedora 44 with GNOME/Mutter or KDE/KWin
+
+The runtime requires GTK 3.24 or newer, WebKitGTK 4.1 version 2.40 or newer,
+and a live `GdkWaylandDisplay`. GTK supplies the control order and icons when
+the titlebar activates. See the
+[Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux)
+for system packages.
+
+## macOS APIs
+
+`set_traffic_lights_inset(x, y)` positions the native traffic lights. `x` is
+the first button's horizontal position. `y` adds height to the titlebar
+container, and AppKit centers the buttons vertically within it.
+
+`set_window_level(level)` accepts an AppKit `NSWindowLevel` value.
+
+`make_transparent()` requires the `macos-transparency` feature:
+
+```toml
+tauri-plugin-decoration = { version = "2.1.0", features = ["macos-transparency"] }
 ```
 
-## Platform Support
+> [!WARNING]
+> This feature enables Tauri's private macOS API and prevents App Store
+> acceptance. Traffic-light positioning and window-level APIs do not require
+> it.
 
-| Feature | Windows | macOS | Linux |
-|---|---|---|---|
-| Custom window controls | Native HTML buttons | Native HTML buttons | System icon theme |
-| Snap Layout flyout | Windows 11 only | — | — |
-| Traffic light inset | — | Yes | — |
-| Window transparency | — | Yes | — |
-| Draggable titlebar | Yes | Yes | Yes |
+## Example
 
-## Credits
-
-Original author: [clearlysid/tauri-plugin-decorum](https://github.com/clearlysid/tauri-plugin-decorum).
-Snap Layout implementation inspired by [clarifei/tauri-plugin-frame](https://github.com/clarifei/tauri-plugin-frame) and [Hyph-M/tauri-plugin-snap-layout](https://github.com/Hyph-M/tauri-plugin-snap-layout).
+The [example app](examples/tauri-app) contains a complete hidden-window
+activation and native-titlebar fallback.
