@@ -777,16 +777,62 @@ describe("embedded decoration runtime", () => {
     );
   });
 
-  it("keeps the example header non-editing and transparent to the plugin drag plane", () => {
+  it("layers the visible example titlebar around the plugin controls", () => {
     assert.match(
       exampleAppSource,
       /<header\s+className="titlebar-content"\s+data-tauri-drag-region=""\s*>/s,
     );
     assert.match(
-      exampleStylesheet,
-      /\.titlebar-content\s*\{[^}]*pointer-events:\s*none;[^}]*cursor:\s*default;[^}]*user-select:\s*none;/s,
+      exampleAppSource,
+      /<div\s+className="titlebar-surface"\s+aria-hidden="true"\s*\/>/s,
+    );
+
+    const pluginLayer = Number(
+      stylesheet.match(
+        /\[data-tauri-plugin-decoration-root\]\s*\{[^}]*z-index:\s*(\d+);/s,
+      )?.[1],
+    );
+    const surfaceRule = exampleStylesheet.match(
+      /\.titlebar-surface\s*\{([^}]*)\}/s,
+    )?.[1];
+    const titlebarRule = exampleStylesheet.match(
+      /\.titlebar-content\s*\{([^}]*)\}/s,
+    )?.[1];
+    assert.ok(surfaceRule, "missing example titlebar surface rule");
+    assert.ok(titlebarRule, "missing example titlebar rule");
+    const surfaceLayer = Number(surfaceRule.match(/z-index:\s*(\d+);/)?.[1]);
+    const titlebarLayer = Number(titlebarRule.match(/z-index:\s*(\d+);/)?.[1]);
+
+    assert.match(surfaceRule, /background:/);
+    assert.match(surfaceRule, /border-bottom:/);
+    assert.ok(
+      surfaceLayer < pluginLayer && pluginLayer < titlebarLayer,
+      "the plugin controls must sit between the surface and interactive content",
+    );
+    assert.match(
+      titlebarRule,
+      /pointer-events:\s*none;[^}]*cursor:\s*default;[^}]*user-select:\s*none;/s,
     );
     assert.doesNotMatch(exampleAppSource, /<nav|Disclosure|Test windows/);
+  });
+
+  it("provides an accessible custom Window dropdown with real actions", () => {
+    for (const required of [
+      'aria-haspopup="menu"',
+      'role="menu"',
+      'role="menuitem"',
+      "currentWindow.minimize()",
+      "currentWindow.toggleMaximize()",
+      "currentWindow.close()",
+    ]) {
+      assert.ok(exampleAppSource.includes(required), `missing dropdown behavior: ${required}`);
+    }
+    assert.match(
+      exampleStylesheet,
+      /\.window-menu\s*\{[^}]*pointer-events:\s*auto;/s,
+    );
+    assert.match(exampleAppSource, /event\.key === "Escape"/);
+    assert.match(exampleAppSource, /event\.key === "ArrowDown"/);
   });
 
   it("uses plugin clearances without application fullscreen bookkeeping", () => {

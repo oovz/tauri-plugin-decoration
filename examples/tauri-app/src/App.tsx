@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 const DECORATION_FALLBACK_MS = 5000;
 const currentWindow = getCurrentWindow();
@@ -8,11 +8,134 @@ const modeStorageKey = `decoration-example:mode:${currentWindow.label}`;
 const initialMode = window.sessionStorage.getItem(modeStorageKey);
 let activationRequest: Promise<unknown> | null = null;
 
+interface WindowAction {
+	label: string;
+	run: () => Promise<void>;
+}
+
+const windowActions: readonly WindowAction[] = [
+	{ label: "Minimize", run: () => currentWindow.minimize() },
+	{ label: "Toggle maximize", run: () => currentWindow.toggleMaximize() },
+	{ label: "Close", run: () => currentWindow.close() },
+];
+
 const requestCustomTitlebar = () => {
 	window.sessionStorage.setItem(modeStorageKey, "custom");
 	activationRequest ??= invoke("activate_custom_titlebar");
 	return activationRequest;
 };
+
+function WindowMenu({
+	onActionError,
+}: {
+	onActionError: (message: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const menuId = useId();
+	const triggerId = `${menuId}-trigger`;
+	const rootRef = useRef<HTMLDivElement>(null);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const firstItemRef = useRef<HTMLButtonElement>(null);
+
+	useEffect(() => {
+		if (!open) return;
+
+		const dismissOutside = (event: PointerEvent) => {
+			if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+		};
+		document.addEventListener("pointerdown", dismissOutside);
+		firstItemRef.current?.focus();
+
+		return () => document.removeEventListener("pointerdown", dismissOutside);
+	}, [open]);
+
+	const closeAndFocusTrigger = () => {
+		setOpen(false);
+		triggerRef.current?.focus();
+	};
+
+	const runAction = async (item: WindowAction) => {
+		setOpen(false);
+		try {
+			await item.run();
+		} catch (error) {
+			onActionError(`${item.label} failed: ${String(error)}`);
+		}
+	};
+
+	return (
+		<div
+			className="window-menu"
+			ref={rootRef}
+			onBlur={(event) => {
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+					setOpen(false);
+				}
+			}}
+		>
+			<button
+				className="window-menu-trigger"
+				type="button"
+				ref={triggerRef}
+				id={triggerId}
+				aria-controls={open ? menuId : undefined}
+				aria-expanded={open}
+				aria-haspopup="menu"
+				onClick={() => setOpen((current) => !current)}
+				onKeyDown={(event) => {
+					if (event.key === "ArrowDown") {
+						event.preventDefault();
+						setOpen(true);
+					}
+				}}
+			>
+				Window <span aria-hidden="true">▾</span>
+			</button>
+
+			{open && (
+				<ul
+					className="window-menu-list"
+					id={menuId}
+					role="menu"
+					aria-labelledby={triggerId}
+					onKeyDown={(event) => {
+						if (event.key === "Escape") {
+							event.preventDefault();
+							closeAndFocusTrigger();
+							return;
+						}
+						if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+
+						event.preventDefault();
+						const items = Array.from(
+							event.currentTarget.querySelectorAll<HTMLButtonElement>(
+								'[role="menuitem"]',
+							),
+						);
+						const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+						const step = event.key === "ArrowDown" ? 1 : -1;
+						const nextIndex = (currentIndex + step + items.length) % items.length;
+						items[nextIndex]?.focus();
+					}}
+				>
+					{windowActions.map((item, index) => (
+						<li key={item.label} role="none">
+							<button
+								className="window-menu-item"
+								type="button"
+								ref={index === 0 ? firstItemRef : undefined}
+								role="menuitem"
+								onClick={() => void runAction(item)}
+							>
+								{item.label}
+							</button>
+						</li>
+					))}
+				</ul>
+			)}
+		</div>
+	);
+}
 
 function App() {
 	const [nativeTitlebar, setNativeTitlebar] = useState(
@@ -106,9 +229,13 @@ function App() {
 	return (
 		<div className="app">
 			{!nativeTitlebar && (
-				<header className="titlebar-content" data-tauri-drag-region="">
-					<span className="app-title">Decoration example</span>
-				</header>
+				<>
+					<div className="titlebar-surface" aria-hidden="true" />
+					<header className="titlebar-content" data-tauri-drag-region="">
+						<WindowMenu onActionError={setStatus} />
+						<span className="app-title">Decoration example</span>
+					</header>
+				</>
 			)}
 
 			<main className="app-body">
