@@ -163,7 +163,7 @@ fn generated_application_schemas_are_ignored_not_packaged_inputs() {
 fn node_workspace_is_private_tooling_not_a_guest_package() {
     let package = read("package.json");
     assert!(package.contains("\"private\": true"));
-    assert!(package.contains("\"node\": \">=24.0.0 <25\""));
+    assert!(package.contains("\"node\": \">=24.0.0\""));
     assert!(package.contains("\"pnpm\": \"11.9.0\""));
     assert!(!package.contains("\"version\":"));
     assert!(!package.contains("\"dependencies\":"));
