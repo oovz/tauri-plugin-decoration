@@ -81,8 +81,8 @@ jobs:
       - name: Run strict Clippy
         shell: bash
         run: |
-          cargo +1.77.2 clippy --locked --all-targets --all-features -- -D warnings
-          cargo +1.77.2 clippy --locked --manifest-path examples/tauri-app/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+          cargo +1.77.2 clippy --locked --all-targets --all-features -- -D warnings -D rust-2024-compatibility
+          cargo +1.77.2 clippy --locked --manifest-path examples/tauri-app/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings -D rust-2024-compatibility
 
       - name: Run Rust tests
         shell: bash
@@ -194,7 +194,7 @@ jobs:
           CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow
         run: |
           cargo +stable update
-          cargo +stable clippy --all-targets --all-features -- -D warnings
+          cargo +stable clippy --all-targets --all-features -- -D warnings -D rust-2024-compatibility
 
   workflow-lint:
     name: Lint GitHub Actions workflows

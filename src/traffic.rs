@@ -312,7 +312,7 @@ fn refresh<R: Runtime>(
     })?;
     if let Some((target, titlebar)) = dispatch {
         let script = frontend::dispatch_script(target, MACOS_TITLEBAR_EVENT, &titlebar)?;
-        if let Err(eval_error) = window.eval(&script) {
+        if let Err(eval_error) = window.eval(script) {
             let geometry_rollback = previous_geometry
                 .map(|geometry| restore_traffic_geometry(ns_window, geometry))
                 .transpose();
@@ -474,13 +474,17 @@ pub(crate) fn deactivate<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Er
 
     let mut failures = Vec::new();
     if let Some(geometry) = deactivation.original_geometry {
-        match native_window_pointer(window).and_then(|(_main_thread, pointer)| {
-            // SAFETY: Same documented pointer, lifetime, and main-thread
-            // guarantees as in `refresh`.
-            let ns_window = unsafe { pointer.cast::<NSWindow>().as_ref() }
-                .ok_or_else(|| Error::from(anyhow!("AppKit returned a null NSWindow pointer")))?;
-            restore_traffic_geometry(ns_window, geometry)
-        }) {
+        let geometry_restoration =
+            native_window_pointer(window).and_then(|(_main_thread, pointer)| {
+                // SAFETY: Same documented pointer, lifetime, and main-thread
+                // guarantees as in `refresh`.
+                let ns_window =
+                    unsafe { pointer.cast::<NSWindow>().as_ref() }.ok_or_else(|| {
+                        Error::from(anyhow!("AppKit returned a null NSWindow pointer"))
+                    })?;
+                restore_traffic_geometry(ns_window, geometry)
+            });
+        match geometry_restoration {
             Ok(()) => {}
             Err(error) => failures.push(format!("native geometry restoration failed: {error}")),
         }
@@ -493,7 +497,7 @@ pub(crate) fn deactivate<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Er
         };
         match frontend::dispatch_script(target, MACOS_TITLEBAR_EVENT, &titlebar) {
             Ok(script) => {
-                if let Err(error) = window.eval(&script) {
+                if let Err(error) = window.eval(script) {
                     failures.push(format!("frontend clearance cleanup failed: {error}"));
                 }
             }
@@ -578,7 +582,9 @@ pub(crate) fn make_transparent<R: Runtime>(window: &WebviewWindow<R>) -> Result<
         Ok(Err(error)) => error.to_string(),
         Err(error) => error.to_string(),
     };
-    match restore_transparency(ns_window, previous_opaque, &previous_background) {
+    let transparency_restoration =
+        restore_transparency(ns_window, previous_opaque, &previous_background);
+    match transparency_restoration {
         Ok(()) => Err(anyhow!(webview_error).into()),
         Err(rollback_error) => {
             Err(anyhow!("{webview_error}; NSWindow rollback failed: {rollback_error}").into())

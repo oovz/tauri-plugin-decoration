@@ -34,7 +34,7 @@ fn release_manifest_has_the_supported_version_and_dependency_boundary() {
     let dependencies = cargo_section(&manifest, "dependencies");
     let features = cargo_section(&manifest, "features");
 
-    assert!(package.contains("version = \"2.1.1\""));
+    assert!(package.contains("version = \"2.1.2\""));
     assert!(package.contains("rust-version = \"1.77.2\""));
     assert!(dependencies.contains(
         "tauri = { version = \"2.9.0\", default-features = false, features = [\"wry\"] }"
@@ -104,6 +104,28 @@ fn locked_baseline_example_and_minimum_fixture_use_tauri_2_9() {
         "tests/compatibility/tauri-2.9/Cargo.lock",
     ] {
         assert!(root().join(lockfile).is_file(), "missing {lockfile}");
+    }
+}
+
+#[test]
+fn tracked_lockfiles_keep_the_rust_1_77_compatible_dlopen2_pair() {
+    for lockfile in [
+        "Cargo.lock",
+        "examples/tauri-app/src-tauri/Cargo.lock",
+        "tests/compatibility/tauri-2.9/Cargo.lock",
+    ] {
+        let lock = read(lockfile);
+        for (name, version) in [("dlopen2", "0.8.0"), ("dlopen2_derive", "0.4.1")] {
+            assert!(
+                lock_has_package(&lock, name, version),
+                "{lockfile} must lock {name} {version} for Rust 1.77.2"
+            );
+            assert_eq!(
+                lock.matches(&format!("\nname = \"{name}\"\n")).count(),
+                1,
+                "{lockfile} must contain exactly one locked {name} version"
+            );
+        }
     }
 }
 
@@ -398,7 +420,9 @@ fn ci_and_release_keep_the_essential_supply_chain_controls() {
         "tests/compatibility/tauri-2.9/Cargo.toml",
         "CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow",
         "cargo +stable update",
-        "cargo +stable clippy --all-targets --all-features -- -D warnings",
+        "cargo +1.77.2 clippy --locked --all-targets --all-features -- -D warnings -D rust-2024-compatibility",
+        "cargo +1.77.2 clippy --locked --manifest-path examples/tauri-app/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings -D rust-2024-compatibility",
+        "cargo +stable clippy --all-targets --all-features -- -D warnings -D rust-2024-compatibility",
         "pnpm install --frozen-lockfile",
         "cargo +stable publish --dry-run --locked",
         "persist-credentials: false",
@@ -473,7 +497,7 @@ fn public_docs_match_the_v2_surface_and_tauri_2_9_boundary() {
     let readme = read("README.md");
 
     for required in [
-        "tauri-plugin-decoration = \"2.1.1\"",
+        "tauri-plugin-decoration = \"2.1.2\"",
         "applications do not install a companion npm package",
         "data-tauri-plugin-decoration-active",
         "macos-transparency",

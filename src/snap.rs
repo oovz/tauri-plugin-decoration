@@ -93,13 +93,13 @@ pub(crate) fn install<R: Runtime>(
     let event_window = window.clone();
     let event_callback = Arc::new(move |event: SnapEvent| {
         if let Ok(script) = frontend::dispatch_script(target, event.as_str(), &()) {
-            let _ = event_window.eval(&script);
+            let _ = event_window.eval(script);
         }
     });
     let move_window = window.clone();
     let move_callback = Arc::new(move |x: i32, y: i32| {
         if let Ok(script) = frontend::dispatch_script(target, "snap-mousemove", &(x, y)) {
-            let _ = move_window.eval(&script);
+            let _ = move_window.eval(script);
         }
     });
 
@@ -159,27 +159,37 @@ unsafe fn install_hwnd(
     }
     let instance = register_class()?;
     let parent = hwnd as HWND;
-    let overlay = CreateWindowExW(
-        0,
-        SNAP_CLASS.as_ptr(),
-        SNAP_CLASS.as_ptr(),
-        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
-        0,
-        0,
-        0,
-        0,
-        parent,
-        std::ptr::null_mut(),
-        instance,
-        std::ptr::null_mut(),
-    );
+    // SAFETY: `parent` is the live HWND supplied by Tauri, `instance` owns the
+    // registered static class, and all optional pointer arguments are null.
+    let overlay = unsafe {
+        CreateWindowExW(
+            0,
+            SNAP_CLASS.as_ptr(),
+            SNAP_CLASS.as_ptr(),
+            WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+            0,
+            0,
+            0,
+            0,
+            parent,
+            std::ptr::null_mut(),
+            instance,
+            std::ptr::null_mut(),
+        )
+    };
     if overlay.is_null() {
         return Err(last_os_error("CreateWindowExW"));
     }
 
-    if SetWindowSubclass(parent, Some(parent_subclass_proc), SUBCLASS_ID, 0) == 0 {
+    // SAFETY: `parent` remains live, and `parent_subclass_proc` has the required
+    // static Win32 callback ABI and does not unwind across the FFI boundary.
+    let subclass_installed =
+        unsafe { SetWindowSubclass(parent, Some(parent_subclass_proc), SUBCLASS_ID, 0) != 0 };
+    if !subclass_installed {
         let subclass_error = anyhow!("SetWindowSubclass failed for the decoration snap overlay");
-        let destroy_result = DestroyWindow(overlay);
+        // SAFETY: `overlay` is the non-null child HWND created above and has
+        // not yet been transferred to the registry.
+        let destroy_result = unsafe { DestroyWindow(overlay) };
         return if destroy_result == 0 {
             Err(anyhow!("{subclass_error}; cleanup DestroyWindow failed").into())
         } else {
@@ -190,8 +200,12 @@ unsafe fn install_hwnd(
     if let Err(error) =
         with_registry(|registry| registry.insert(hwnd, overlay as isize, geometry, callbacks))
     {
-        RemoveWindowSubclass(parent, Some(parent_subclass_proc), SUBCLASS_ID);
-        let destroy_failed = DestroyWindow(overlay) == 0;
+        // SAFETY: Both HWNDs are still live and owned by this installation
+        // attempt; the callback and subclass ID match the successful install.
+        let destroy_failed = unsafe {
+            RemoveWindowSubclass(parent, Some(parent_subclass_proc), SUBCLASS_ID);
+            DestroyWindow(overlay) == 0
+        };
         return if destroy_failed {
             Err(anyhow!("{error}; cleanup DestroyWindow failed").into())
         } else {
@@ -199,8 +213,12 @@ unsafe fn install_hwnd(
         };
     }
 
-    if let Err(error) = update_overlay_position(parent) {
-        let rollback = uninstall_hwnd(hwnd).err();
+    // SAFETY: The parent and newly registered overlay are both live for the
+    // duration of this synchronous position update.
+    let position_result = unsafe { update_overlay_position(parent) };
+    if let Err(error) = position_result {
+        // SAFETY: This rolls back the same live HWND registered above.
+        let rollback = unsafe { uninstall_hwnd(hwnd) }.err();
         return match rollback {
             Some(rollback) => Err(anyhow!(
                 "snap overlay positioning failed: {error}; rollback failed: {rollback}"
@@ -219,11 +237,15 @@ unsafe fn uninstall_hwnd(hwnd: isize) -> Result<(), tauri::Error> {
         return Ok(());
     }
 
+    // SAFETY: The caller guarantees that `parent` is still live; the matching
+    // lifecycle entry records the callback and ID used at installation.
     let subclass_removed =
-        RemoveWindowSubclass(parent, Some(parent_subclass_proc), SUBCLASS_ID) != 0;
+        unsafe { RemoveWindowSubclass(parent, Some(parent_subclass_proc), SUBCLASS_ID) != 0 };
     let removed = with_registry(|registry| registry.remove_parent(hwnd));
     let destroy_error = removed.and_then(|removed| {
-        (DestroyWindow(removed.overlay() as HWND) == 0)
+        // SAFETY: This path runs before parent destruction. Removing the entry
+        // transfers sole cleanup ownership of its overlay HWND to this call.
+        (unsafe { DestroyWindow(removed.overlay() as HWND) } == 0)
             .then(|| std::io::Error::last_os_error().to_string())
     });
 
@@ -285,15 +307,21 @@ unsafe fn update_overlay_position(hwnd: HWND) -> Result<(), tauri::Error> {
         return Ok(());
     };
     if position.fullscreen() {
-        ShowWindow(position.overlay() as HWND, SW_HIDE);
+        // SAFETY: The caller guarantees that the parent and its registered
+        // child overlay remain live for this synchronous update.
+        unsafe { ShowWindow(position.overlay() as HWND, SW_HIDE) };
         return Ok(());
     }
 
-    let mut rect = std::mem::zeroed();
-    if GetClientRect(hwnd, &mut rect) == 0 {
+    // SAFETY: A zeroed Win32 RECT is a valid initialized output buffer.
+    let mut rect = unsafe { std::mem::zeroed() };
+    // SAFETY: The caller guarantees that `hwnd` is live, and `rect` is a valid
+    // output buffer.
+    if unsafe { GetClientRect(hwnd, &mut rect) } == 0 {
         return Err(last_os_error("GetClientRect"));
     }
-    let dpi = GetDpiForWindow(hwnd) as u64;
+    // SAFETY: The caller guarantees that `hwnd` remains live for this call.
+    let dpi = unsafe { GetDpiForWindow(hwnd) } as u64;
     if dpi == 0 {
         return Err(last_os_error("GetDpiForWindow"));
     }
@@ -304,15 +332,19 @@ unsafe fn update_overlay_position(hwnd: HWND) -> Result<(), tauri::Error> {
         i32::try_from(position.right_index().saturating_add(1)).unwrap_or(i32::MAX),
     );
     let x = rect.right.saturating_sub(occupied_width);
-    if SetWindowPos(
-        position.overlay() as HWND,
-        HWND_TOP,
-        x,
-        0,
-        button_width,
-        titlebar_height,
-        SWP_NOACTIVATE | SWP_SHOWWINDOW,
-    ) == 0
+    // SAFETY: The caller guarantees that the registered child overlay remains
+    // live, and the calculated dimensions are bounded signed integers.
+    if unsafe {
+        SetWindowPos(
+            position.overlay() as HWND,
+            HWND_TOP,
+            x,
+            0,
+            button_width,
+            titlebar_height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        )
+    } == 0
     {
         return Err(last_os_error("SetWindowPos"));
     }
@@ -362,18 +394,24 @@ fn last_os_error(operation: &str) -> tauri::Error {
 unsafe fn handle_parent_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_SIZE | WM_DPICHANGED => {
-            let _ = update_overlay_position(hwnd);
+            // SAFETY: Win32 invokes this callback with the live subclassed
+            // parent HWND; the update does not retain it.
+            let _ = unsafe { update_overlay_position(hwnd) };
         }
         WM_NCDESTROY => {
             // Parent destruction already destroyed the child overlay. Remove
             // only Rust bookkeeping and this callback; never call DestroyWindow
             // from the parent's terminal destruction message.
             with_registry(|registry| registry.remove_parent(hwnd as isize));
-            RemoveWindowSubclass(hwnd, Some(parent_subclass_proc), SUBCLASS_ID);
+            // SAFETY: The callback is currently installed on this HWND with
+            // the same function pointer and subclass ID.
+            unsafe { RemoveWindowSubclass(hwnd, Some(parent_subclass_proc), SUBCLASS_ID) };
         }
         _ => {}
     }
-    DefSubclassProc(hwnd, msg, wparam, lparam)
+    // SAFETY: These are the unchanged parameters supplied by Win32 to the
+    // active subclass callback.
+    unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
 unsafe extern "system" fn parent_subclass_proc(
@@ -385,9 +423,14 @@ unsafe extern "system" fn parent_subclass_proc(
     _ref_data: usize,
 ) -> LRESULT {
     catch_unwind(AssertUnwindSafe(|| {
-        handle_parent_message(hwnd, msg, wparam, lparam)
+        // SAFETY: Win32 supplied these parameters to this registered callback.
+        unsafe { handle_parent_message(hwnd, msg, wparam, lparam) }
     }))
-    .unwrap_or_else(|_| DefSubclassProc(hwnd, msg, wparam, lparam))
+    .unwrap_or_else(|_| {
+        // SAFETY: On panic, forwarding the original callback parameters keeps
+        // unwinding inside Rust and preserves the Win32 subclass chain.
+        unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+    })
 }
 
 unsafe fn handle_overlay_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -396,14 +439,20 @@ unsafe fn handle_overlay_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
         WM_NCMOUSEMOVE => {
             let Some(parent) = with_registry(|registry| registry.parent_for_overlay(hwnd as isize))
             else {
-                return DefWindowProcW(hwnd, msg, wparam, lparam);
+                // SAFETY: Win32 supplied the live overlay HWND and message
+                // parameters to this window procedure.
+                return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
             };
             let mut point = windows_sys::Win32::Foundation::POINT {
                 x: (lparam as i16) as i32,
                 y: ((lparam >> 16) as i16) as i32,
             };
-            if ScreenToClient(parent as HWND, &mut point) == 0 {
-                return DefWindowProcW(hwnd, msg, wparam, lparam);
+            // SAFETY: This message precedes destruction for the registered
+            // overlay, its recorded parent is still live, and `point` is a
+            // valid in/out buffer.
+            if unsafe { ScreenToClient(parent as HWND, &mut point) } == 0 {
+                // SAFETY: Forward the original parameters supplied by Win32.
+                return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
             }
 
             let effects =
@@ -417,7 +466,8 @@ unsafe fn handle_overlay_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
                     hwndTrack: hwnd,
                     dwHoverTime: 0,
                 };
-                if TrackMouseEvent(&mut track) == 0 {
+                // SAFETY: `track` is fully initialized for the live overlay.
+                if unsafe { TrackMouseEvent(&mut track) } == 0 {
                     let effects = with_registry(|registry| registry.mouse_leave(hwnd as isize));
                     effects.dispatch();
                 }
@@ -442,16 +492,21 @@ unsafe fn handle_overlay_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: L
         WM_NCDESTROY => {
             let removed = with_registry(|registry| registry.remove_overlay(hwnd as isize));
             if let Some(removed) = removed {
-                RemoveWindowSubclass(
-                    removed.parent() as HWND,
-                    Some(parent_subclass_proc),
-                    SUBCLASS_ID,
-                );
+                // SAFETY: The removed entry identifies the parent subclass
+                // installed with this callback and subclass ID.
+                unsafe {
+                    RemoveWindowSubclass(
+                        removed.parent() as HWND,
+                        Some(parent_subclass_proc),
+                        SUBCLASS_ID,
+                    )
+                };
             }
         }
         _ => {}
     }
-    DefWindowProcW(hwnd, msg, wparam, lparam)
+    // SAFETY: Forward the original parameters supplied by Win32.
+    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
 unsafe extern "system" fn overlay_proc(
@@ -461,9 +516,13 @@ unsafe extern "system" fn overlay_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     catch_unwind(AssertUnwindSafe(|| {
-        handle_overlay_message(hwnd, msg, wparam, lparam)
+        // SAFETY: Win32 supplied these parameters to this registered callback.
+        unsafe { handle_overlay_message(hwnd, msg, wparam, lparam) }
     }))
-    .unwrap_or_else(|_| DefWindowProcW(hwnd, msg, wparam, lparam))
+    .unwrap_or_else(|_| {
+        // SAFETY: On panic, forward the original Win32 callback parameters.
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+    })
 }
 
 fn window_hwnd<R: Runtime>(window: &WebviewWindow<R>) -> Result<isize, tauri::Error> {

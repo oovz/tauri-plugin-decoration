@@ -27,7 +27,7 @@ Add the plugin and Tauri to your application:
 ```toml
 [dependencies]
 tauri = "2.9.0"
-tauri-plugin-decoration = "2.1.1"
+tauri-plugin-decoration = "2.1.2"
 ```
 
 Register the plugin before Tauri creates any WebViews, then expose an
@@ -180,7 +180,7 @@ container, and AppKit centers the buttons vertically within it.
 `make_transparent()` requires the `macos-transparency` feature:
 
 ```toml
-tauri-plugin-decoration = { version = "2.1.1", features = ["macos-transparency"] }
+tauri-plugin-decoration = { version = "2.1.2", features = ["macos-transparency"] }
 ```
 
 > [!WARNING]

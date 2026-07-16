@@ -199,7 +199,7 @@ fn evaluate_preparation<R: Runtime>(
     target: FrontendTarget,
 ) -> Result<(), Error> {
     let script = frontend::prepare_script(target, platform(), &frontend_options(window)?)?;
-    window.eval(&script)
+    window.eval(script)
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -275,7 +275,7 @@ fn cancel_activation<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Error>
     let state = decoration_state(window)?;
     if let Some(target) = state.cancel_current(window.label()) {
         let script = frontend::cancel_script(target)?;
-        window.eval(&script)?;
+        window.eval(script)?;
     }
     Ok(())
 }
@@ -489,14 +489,14 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             };
             let reconcile = window.clone();
             let event = payload.event();
-            if let Err(error) =
-                dispatch_webview(&window, move || handle_page_load(&reconcile, event))
-            {
+            let dispatch_result =
+                dispatch_webview(&window, move || handle_page_load(&reconcile, event));
+            if let Err(error) = dispatch_result {
                 eprintln!(
                     "decoration: failed to reconcile page for window {:?}: {error}",
                     window.label()
                 );
-            }
+            };
         })
         .on_event(|app, event| {
             let RunEvent::WindowEvent { label, event, .. } = event else {
