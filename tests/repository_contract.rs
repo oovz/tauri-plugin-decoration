@@ -108,6 +108,31 @@ fn locked_baseline_example_and_minimum_fixture_use_tauri_2_9() {
 }
 
 #[test]
+fn minimum_fixture_declares_an_existing_windows_resource_icon() {
+    let config_path = root().join("tests/compatibility/tauri-2.9/tauri.conf.json");
+    let config: serde_json::Value =
+        serde_json::from_str(&read("tests/compatibility/tauri-2.9/tauri.conf.json"))
+            .expect("minimum compatibility fixture must have valid Tauri configuration");
+    let icons = config["bundle"]["icon"]
+        .as_array()
+        .expect("minimum compatibility fixture must declare bundle icons");
+    let windows_icon = icons
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .find(|path| path.ends_with(".ico"))
+        .expect("minimum compatibility fixture must declare a Windows .ico resource");
+
+    assert!(
+        config_path
+            .parent()
+            .expect("Tauri configuration must have a parent directory")
+            .join(windows_icon)
+            .is_file(),
+        "minimum compatibility fixture Windows icon does not exist: {windows_icon}"
+    );
+}
+
+#[test]
 fn tracked_lockfiles_keep_the_rust_1_77_compatible_dlopen2_pair() {
     for lockfile in [
         "Cargo.lock",
