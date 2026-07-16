@@ -34,7 +34,7 @@ fn release_manifest_has_the_supported_version_and_dependency_boundary() {
     let dependencies = cargo_section(&manifest, "dependencies");
     let features = cargo_section(&manifest, "features");
 
-    assert!(package.contains("version = \"2.1.0\""));
+    assert!(package.contains("version = \"2.1.1\""));
     assert!(package.contains("rust-version = \"1.77.2\""));
     assert!(dependencies.contains(
         "tauri = { version = \"2.9.0\", default-features = false, features = [\"wry\"] }"
@@ -473,7 +473,7 @@ fn public_docs_match_the_v2_surface_and_tauri_2_9_boundary() {
     let readme = read("README.md");
 
     for required in [
-        "tauri-plugin-decoration = \"2.1.0\"",
+        "tauri-plugin-decoration = \"2.1.1\"",
         "applications do not install a companion npm package",
         "data-tauri-plugin-decoration-active",
         "macos-transparency",
