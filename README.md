@@ -12,8 +12,9 @@ Native window controls for custom Tauri v2 titlebars.
 | Linux | GTK-themed HTML controls for supported Wayland sessions |
 
 The plugin requires Tauri 2.9.0 or a later compatible Tauri v2 release and
-Rust 1.88. Its JavaScript and CSS are embedded in the Rust crate, so
-applications do not install a companion npm package.
+Rust 1.77.2. Its JavaScript and CSS are embedded in the Rust crate, so
+applications do not install a companion npm package. Applications building
+with the minimum Rust version should retain an MSRV-compatible `Cargo.lock`.
 
 <video src="https://raw.githubusercontent.com/oovz/tauri-plugin-decoration/main/assets/windows.mp4" controls muted width="100%"></video>
 

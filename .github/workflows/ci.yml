@@ -35,7 +35,7 @@ jobs:
           fi
 
   native:
-    name: ${{ matrix.os }} / Rust 1.88
+    name: ${{ matrix.os }} / Rust 1.77.2
     needs: validate-ref
     runs-on: ${{ matrix.os }}
     permissions:
@@ -69,37 +69,37 @@ jobs:
             libwebkit2gtk-4.1-dev \
             pkg-config
 
-      - name: Install Rust 1.88
+      - name: Install Rust 1.77.2
         shell: bash
-        run: rustup toolchain install 1.88.0 --profile minimal --component clippy,rustfmt
+        run: rustup toolchain install 1.77.2 --profile minimal --component clippy,rustfmt
 
       - name: Check formatting
         if: runner.os == 'Linux'
         shell: bash
-        run: cargo +1.88.0 fmt --all -- --check
+        run: cargo +1.77.2 fmt --all -- --check
 
       - name: Run strict Clippy
         shell: bash
         run: |
-          cargo +1.88.0 clippy --locked --all-targets --all-features -- -D warnings
-          cargo +1.88.0 clippy --locked --manifest-path examples/tauri-app/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+          cargo +1.77.2 clippy --locked --all-targets --all-features -- -D warnings
+          cargo +1.77.2 clippy --locked --manifest-path examples/tauri-app/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Run Rust tests
         shell: bash
         run: |
-          cargo +1.88.0 test --locked --all-features
-          cargo +1.88.0 test --locked --manifest-path examples/tauri-app/src-tauri/Cargo.toml
+          cargo +1.77.2 test --locked --all-features
+          cargo +1.77.2 test --locked --manifest-path examples/tauri-app/src-tauri/Cargo.toml
 
       - name: Compile the minimum Tauri 2.9 fixture
         shell: bash
         env:
           CARGO_TARGET_DIR: target/compat-tauri-2.9
-        run: cargo +1.88.0 check --locked --manifest-path tests/compatibility/tauri-2.9/Cargo.toml
+        run: cargo +1.77.2 check --locked --manifest-path tests/compatibility/tauri-2.9/Cargo.toml
 
       - name: Build documentation
         if: runner.os == 'Linux'
         shell: bash
-        run: cargo +1.88.0 doc --locked --all-features --no-deps
+        run: cargo +1.77.2 doc --locked --all-features --no-deps
 
   frontend:
     name: Frontend and example build
@@ -128,9 +128,9 @@ jobs:
             libwebkit2gtk-4.1-dev \
             pkg-config
 
-      - name: Install Rust 1.88
+      - name: Install Rust 1.77.2
         shell: bash
-        run: rustup toolchain install 1.88.0 --profile minimal
+        run: rustup toolchain install 1.77.2 --profile minimal
 
       - name: Install pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -150,6 +150,8 @@ jobs:
 
       - name: Test and build the embedded frontend
         shell: bash
+        env:
+          RUSTUP_TOOLCHAIN: 1.77.2
         run: |
           pnpm test:frontend
           pnpm --filter tauri-app build
@@ -184,13 +186,15 @@ jobs:
 
       - name: Install stable Rust
         shell: bash
-        run: rustup toolchain install stable --profile minimal
+        run: rustup toolchain install stable --profile minimal --component clippy
 
       - name: Compile against the newest allowed Tauri release
         shell: bash
+        env:
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow
         run: |
-          cargo +stable update -p tauri
-          cargo +stable check --all-features
+          cargo +stable update
+          cargo +stable clippy --all-targets --all-features -- -D warnings
 
   workflow-lint:
     name: Lint GitHub Actions workflows
@@ -211,7 +215,7 @@ jobs:
           curl --fail --location --silent --show-error \
             --output actionlint_1.7.12_linux_amd64.tar.gz \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          echo "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum --check --strict
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz" | sha256sum --check --strict
           tar -xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
           ./actionlint
 
@@ -242,12 +246,12 @@ jobs:
             libwebkit2gtk-4.1-dev \
             pkg-config
 
-      - name: Install Rust 1.88
+      - name: Install stable Rust
         shell: bash
-        run: rustup toolchain install 1.88.0 --profile minimal
+        run: rustup toolchain install stable --profile minimal
 
       - name: Package and dry-run publication
         shell: bash
         run: |
-          cargo +1.88.0 package --locked
-          cargo +1.88.0 publish --dry-run --locked
+          cargo +stable package --locked
+          cargo +stable publish --dry-run --locked

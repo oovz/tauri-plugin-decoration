@@ -121,8 +121,7 @@ pub(crate) fn frontend_options<R: Runtime>(
         controls.push("close");
     }
 
-    let screen = gtk_window
-        .screen()
+    let screen = gtk::prelude::GtkWindowExt::screen(&gtk_window)
         .ok_or_else(|| Error::from(anyhow!("GTK window has no associated screen")))?;
     let settings = gtk::Settings::for_screen(&screen)
         .ok_or_else(|| Error::from(anyhow!("GTK screen has no effective settings")))?;

@@ -159,15 +159,19 @@ where
     })
 }
 
+#[cfg(target_os = "macos")]
 fn platform() -> Platform {
-    #[cfg(target_os = "macos")]
-    return Platform::Macos;
-    #[cfg(target_os = "windows")]
-    return Platform::Windows;
-    #[cfg(target_os = "linux")]
-    return Platform::Linux;
-    #[allow(unreachable_code)]
     Platform::Macos
+}
+
+#[cfg(target_os = "windows")]
+fn platform() -> Platform {
+    Platform::Windows
+}
+
+#[cfg(target_os = "linux")]
+fn platform() -> Platform {
+    Platform::Linux
 }
 
 #[cfg(not(target_os = "linux"))]

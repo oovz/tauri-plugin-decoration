@@ -6,7 +6,7 @@ authors = ["oovz"]
 license = "MIT"
 repository = "https://github.com/oovz/tauri-plugin-decoration"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.77.2"
 
 [build-dependencies]
 tauri-build = { version = "=2.5.0", default-features = false, features = [] }
