@@ -816,6 +816,35 @@ describe("embedded decoration runtime", () => {
     assert.doesNotMatch(exampleAppSource, /<nav|Disclosure|Test windows/);
   });
 
+  it("keeps the example scrollport below the custom titlebar", () => {
+    const bodyRule = exampleStylesheet.match(/body\s*\{([^}]*)\}/s)?.[1];
+    const appRule = exampleStylesheet.match(/\.app\s*\{([^}]*)\}/s)?.[1];
+    const appBodyRule = exampleStylesheet.match(
+      /\.app-body\s*\{([^}]*)\}/s,
+    )?.[1];
+    const customAppBodyRule = exampleStylesheet.match(
+      /\.app\[data-titlebar-mode="custom"\]\s+\.app-body\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    assert.ok(bodyRule, "missing example body rule");
+    assert.ok(appRule, "missing example app shell rule");
+    assert.ok(appBodyRule, "missing example app body rule");
+    assert.ok(customAppBodyRule, "missing custom-titlebar app body rule");
+    assert.match(
+      exampleAppSource,
+      /data-titlebar-mode=\{nativeTitlebar\s*\?\s*"native"\s*:\s*"custom"\}/,
+    );
+    assert.match(bodyRule, /overflow:\s*hidden;/);
+    assert.match(appRule, /height:\s*100vh;/);
+    assert.match(appRule, /overflow:\s*hidden;/);
+    assert.match(appBodyRule, /height:\s*100vh;/);
+    assert.match(appBodyRule, /overflow-y:\s*auto;/);
+    assert.doesNotMatch(appBodyRule, /min-height:\s*100vh;/);
+    assert.match(customAppBodyRule, /height:\s*calc\(100vh\s*-\s*32px\);/);
+    assert.match(customAppBodyRule, /margin-top:\s*32px;/);
+    assert.match(customAppBodyRule, /padding-top:\s*40px;/);
+  });
+
   it("provides an accessible custom Window dropdown with real actions", () => {
     for (const required of [
       'aria-haspopup="menu"',

@@ -227,7 +227,10 @@ function App() {
 	}, []);
 
 	return (
-		<div className="app">
+		<div
+			className="app"
+			data-titlebar-mode={nativeTitlebar ? "native" : "custom"}
+		>
 			{!nativeTitlebar && (
 				<>
 					<div className="titlebar-surface" aria-hidden="true" />

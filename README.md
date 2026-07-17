@@ -156,6 +156,50 @@ controls:
 Both clearances become zero in fullscreen and return when the window leaves
 fullscreen.
 
+The plugin overlays its controls but does not change your application's
+scrolling model. A fixed application titlebar does not automatically keep the
+document scrollbar below it. If content may overflow, keep the document
+viewport non-scrolling and give the application body its own scrollport below
+the titlebar:
+
+```css
+:root {
+  --app-titlebar-height: 32px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body,
+.app-shell {
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100%;
+}
+
+.app-content {
+  height: calc(100% - var(--app-titlebar-height));
+  margin-top: var(--app-titlebar-height);
+  overflow-y: auto;
+}
+
+.app-shell[data-titlebar-mode="native"] {
+  --app-titlebar-height: 0px;
+}
+```
+
+`--app-titlebar-height` is application-owned. The example uses `32px`, which
+matches the plugin's current Windows and Linux HTML control strip; it is not a
+cross-platform native titlebar measurement. macOS uses AppKit's native
+titlebar geometry, and `set_traffic_lights_inset` controls the traffic-light
+container independently.
+
 ## Linux
 
 Linux controls are supported on these Wayland sessions:
