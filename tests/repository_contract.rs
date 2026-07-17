@@ -265,6 +265,13 @@ fn plugin_acl_exposes_only_document_acknowledgement() {
 }
 
 #[test]
+fn frontend_ack_does_not_apply_native_frames_inside_the_sync_ipc_handler() {
+    let lib = read("src/lib.rs");
+
+    assert!(lib.contains("#[tauri::command(rename_all = \"camelCase\", async)]\nfn frontend_ack"));
+}
+
+#[test]
 fn example_is_one_hidden_main_window_with_least_privilege() {
     let config: serde_json::Value =
         serde_json::from_str(&read("examples/tauri-app/src-tauri/tauri.conf.json"))
@@ -537,6 +544,8 @@ fn public_docs_match_the_v2_surface_and_tauri_2_9_boundary() {
         "Tauri 2.9.0 or a later compatible Tauri v2 release",
         "Rust 1.77.2",
         "retain an MSRV-compatible `Cargo.lock`",
+        "scrolling model",
+        "--app-titlebar-height",
     ] {
         assert!(readme.contains(required), "README is missing {required}");
     }

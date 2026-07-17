@@ -448,7 +448,10 @@ fn require_primary_webview<R: Runtime>(webview: &WebviewWindow<R>) -> Result<(),
     }
 }
 
-#[tauri::command(rename_all = "camelCase")]
+// Native frame changes can synchronously call back into WebView2 on Windows.
+// Run this command off the synchronous IPC handler, then dispatch native work
+// to the event-loop thread so WebView2 is not re-entered by its own request.
+#[tauri::command(rename_all = "camelCase", async)]
 fn frontend_ack<R: Runtime>(
     webview: WebviewWindow<R>,
     _state: tauri::State<'_, DecorationState>,
