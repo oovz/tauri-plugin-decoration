@@ -191,6 +191,17 @@ tauri-plugin-decoration = { version = "2.1.3", features = ["macos-transparency"]
 > [!WARNING]
 > The `macos-transparency` feature uses private AppKit APIs and will lead to App Store rejection. Other positioning and level APIs are safe to use.
 
+### macOS WebKit focus behavior
+
+macOS WebKit fires `blur` with `relatedTarget: null` on `mousedown` (Windows/Linux Chromium focus the new target synchronously). Dropdowns that close on `onBlur` by checking `relatedTarget` will unmount before `click` fires. Guard against `null`:
+
+```tsx
+onBlur={(e) => {
+  const related = e.relatedTarget as Node | null;
+  if (related && !e.currentTarget.contains(related)) setOpen(false);
+}}
+```
+
 ## Example
 
 Refer to the [example app](examples/tauri-app) for a complete setup demonstrating custom titlebar activation and fallback.

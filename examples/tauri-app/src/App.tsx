@@ -68,7 +68,15 @@ function WindowMenu({
 			className="window-menu"
 			ref={rootRef}
 			onBlur={(event) => {
-				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+				// Only close when focus explicitly moves to an element OUTSIDE the
+				// root. When relatedTarget is null (focus went nowhere), keep the
+				// menu open — this happens on macOS where mousedown on a button
+				// blurs the current focus without focusing the new target yet, so
+				// treating null as "outside" would unmount the menu items before
+				// the click event can fire. Outside clicks are already handled by
+				// the pointerdown dismiss listener above.
+				const related = event.relatedTarget as Node | null;
+				if (related && !event.currentTarget.contains(related)) {
 					setOpen(false);
 				}
 			}}
