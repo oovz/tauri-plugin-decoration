@@ -24,7 +24,7 @@ Add the dependency to `Cargo.toml`:
 ```toml
 [dependencies]
 tauri = "2.9.0"
-tauri-plugin-decoration = "2.1.3"
+tauri-plugin-decoration = "2.1.4"
 ```
 
 Register the plugin in `src-tauri/src/main.rs` (or `lib.rs`) and add a command to activate the custom titlebar:
@@ -185,7 +185,7 @@ The runtime requires GTK 3.24 or newer, WebKitGTK 4.1 version 2.40 or newer, and
 - `make_transparent()`: Requires the `macos-transparency` feature:
 
 ```toml
-tauri-plugin-decoration = { version = "2.1.3", features = ["macos-transparency"] }
+tauri-plugin-decoration = { version = "2.1.4", features = ["macos-transparency"] }
 ```
 
 > [!WARNING]
