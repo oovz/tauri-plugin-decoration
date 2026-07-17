@@ -11,18 +11,15 @@ Native window controls for custom Tauri v2 titlebars.
 | macOS | Native AppKit traffic lights |
 | Linux | GTK-themed HTML controls for supported Wayland sessions |
 
-The plugin requires Tauri 2.9.0 or a later compatible Tauri v2 release and
-Rust 1.77.2. Its JavaScript and CSS are embedded in the Rust crate, so
-applications do not install a companion npm package. Applications building
-with the minimum Rust version should retain an MSRV-compatible `Cargo.lock`.
+The plugin requires Tauri 2.9.0 or a later compatible Tauri v2 release and Rust 1.77.2. JavaScript and CSS are embedded in the Rust crate, so applications do not install a companion npm package. Applications building with the minimum Rust version should retain an MSRV-compatible `Cargo.lock`.
 
 <video src="https://raw.githubusercontent.com/oovz/tauri-plugin-decoration/main/assets/windows.mp4" controls muted width="100%"></video>
 
 <video src="https://raw.githubusercontent.com/oovz/tauri-plugin-decoration/main/assets/mac.mp4" controls muted width="100%"></video>
 
-## Quick start
+## Quick Start
 
-Add the plugin and Tauri to your application:
+Add the dependency to `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -30,8 +27,7 @@ tauri = "2.9.0"
 tauri-plugin-decoration = "2.1.3"
 ```
 
-Register the plugin before Tauri creates any WebViews, then expose an
-application command for titlebar activation:
+Register the plugin in `src-tauri/src/main.rs` (or `lib.rs`) and add a command to activate the custom titlebar:
 
 ```rust
 use tauri::WebviewWindow;
@@ -59,7 +55,7 @@ fn main() -> Result<(), tauri::Error> {
 }
 ```
 
-Invoke the command after the frontend mounts:
+Call the command from the frontend once it mounts:
 
 ```ts
 import { invoke } from "@tauri-apps/api/core";
@@ -68,16 +64,11 @@ await invoke("activate_custom_titlebar");
 ```
 
 > [!IMPORTANT]
-> Start opted-in windows hidden and keep native decorations enabled. Wait for
-> `data-tauri-plugin-decoration-active` before showing the window. Bound the
-> wait with an application timeout; if the marker never appears, call
-> `restore_native_titlebar()` before `show()`. The example uses five seconds.
+> Windows should start hidden with native decorations enabled. Show the window only after `data-tauri-plugin-decoration-active` is set on the document element. Use a timeout (e.g. 5 seconds) to call `restore_native_titlebar()` if activation fails.
 
-## Tauri configuration
+## Tauri Configuration
 
-Enable Tauri's global API for the embedded controls and allow the plugin's
-stylesheet protocol in your CSP. Linux theme icons also need `data:` in
-`img-src`.
+Configure CSP rules and window behavior in `tauri.conf.json`:
 
 ```json
 {
@@ -105,12 +96,7 @@ stylesheet protocol in your CSP. Linux theme icons also need `data:` in
 }
 ```
 
-`titleBarStyle` and `hiddenTitle` configure the macOS titlebar. Set window
-flags such as `resizable`, `maximizable`, `minimizable`, and `closable` before
-activation.
-
-The following capability covers all built-in controls and the hidden-window
-reveal flow:
+Add permissions to your capability file:
 
 ```json
 {
@@ -131,18 +117,11 @@ reveal flow:
 }
 ```
 
-`decoration:default` permits the plugin's activation acknowledgement. Remove
-window-action permissions only when the corresponding controls are not
-available to the user. Scope the capability to each local, primary WebView by
-window label.
+## Titlebar Layout and CSS
 
-## Titlebar content
+Mark non-interactive titlebar areas with `data-tauri-drag-region`. Interactive elements like buttons and inputs must sit outside this region.
 
-Put `data-tauri-drag-region` on the non-interactive part of your application
-titlebar. Keep buttons, links, and inputs outside the drag region.
-
-Use the clearance variables to keep content away from native and HTML window
-controls:
+Use the provided CSS variables to clear window controls:
 
 ```css
 .titlebar-content {
@@ -153,14 +132,9 @@ controls:
 }
 ```
 
-Both clearances become zero in fullscreen and return when the window leaves
-fullscreen.
+Clearances collapse to `0px` in fullscreen mode.
 
-The plugin overlays its controls but does not change your application's
-scrolling model. A fixed application titlebar does not automatically keep the
-document scrollbar below it. If content may overflow, keep the document
-viewport non-scrolling and give the application body its own scrollport below
-the titlebar:
+Since the plugin overlays controls without altering the document scrolling behavior, a fixed titlebar will not automatically bound the scrolling model. To keep the scrollbar below the titlebar, lock the main document viewport and scroll the body container:
 
 ```css
 :root {
@@ -194,45 +168,29 @@ body,
 }
 ```
 
-`--app-titlebar-height` is application-owned. The example uses `32px`, which
-matches the plugin's current Windows and Linux HTML control strip; it is not a
-cross-platform native titlebar measurement. macOS uses AppKit's native
-titlebar geometry, and `set_traffic_lights_inset` controls the traffic-light
-container independently.
+The example uses `32px` for `--app-titlebar-height`, matching Windows and Linux HTML strips. macOS uses AppKit's native geometry, control insets are configured independently via `set_traffic_lights_inset`.
 
-## Linux
+## Linux Support
 
-Linux controls are supported on these Wayland sessions:
-
+HTML controls are supported on Wayland sessions in:
 - Ubuntu 24.04 LTS with GNOME/Mutter or KDE/KWin
 - Fedora 44 with GNOME/Mutter or KDE/KWin
 
-The runtime requires GTK 3.24 or newer, WebKitGTK 4.1 version 2.40 or newer,
-and a live `GdkWaylandDisplay`. GTK supplies the control order and icons when
-the titlebar activates. See the
-[Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux)
-for system packages.
+The runtime requires GTK 3.24 or newer, WebKitGTK 4.1 version 2.40 or newer, and a live `GdkWaylandDisplay`. System packages must be installed as described in the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux).
 
 ## macOS APIs
 
-`set_traffic_lights_inset(x, y)` positions the native traffic lights. `x` is
-the first button's horizontal position. `y` adds height to the titlebar
-container, and AppKit centers the buttons vertically within it.
-
-`set_window_level(level)` accepts an AppKit `NSWindowLevel` value.
-
-`make_transparent()` requires the `macos-transparency` feature:
+- `set_traffic_lights_inset(x, y)`: Positions the traffic lights. AppKit vertically centers buttons within the height adjusted by `y`.
+- `set_window_level(level)`: Sets the AppKit `NSWindowLevel`.
+- `make_transparent()`: Requires the `macos-transparency` feature:
 
 ```toml
 tauri-plugin-decoration = { version = "2.1.3", features = ["macos-transparency"] }
 ```
 
 > [!WARNING]
-> This feature enables Tauri's private macOS API and prevents App Store
-> acceptance. Traffic-light positioning and window-level APIs do not require
-> it.
+> The `macos-transparency` feature uses private AppKit APIs and will lead to App Store rejection. Other positioning and level APIs are safe to use.
 
 ## Example
 
-The [example app](examples/tauri-app) contains a complete hidden-window
-activation and native-titlebar fallback.
+Refer to the [example app](examples/tauri-app) for a complete setup demonstrating custom titlebar activation and fallback.
